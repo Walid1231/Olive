@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -205,40 +206,62 @@ fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: M
 
 data class SegmentOption(val label: String, val icon: ImageVector? = null, val count: Int? = null)
 
-/** iOS-style glass segmented control (Songs | Audiobooks, Inbox | Friends | Requests …). */
+/**
+ * Glass segmented control (Songs | Audiobooks, Inbox | Friends | Requests …).
+ * One gradient pill slides under the chosen option. Only its position animates (no fading
+ * between two pills), so nothing flickers when switching.
+ */
 @Composable
-fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Row(
+fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, height: Dp = 46.dp) {
+    val hf = LocalHapticFeedback.current
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .glass(RoundedCornerShape(22.dp), alpha = 0.55f, elevation = 0.dp)
+            .glass(RoundedCornerShape(height / 2 + 4.dp), alpha = 0.6f, elevation = 0.dp)
             .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        options.forEachIndexed { i, opt ->
-            val on = i == selected
-            val pill by animateFloatAsState(if (on) 1f else 0f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow), label = "seg")
-            val fg by animateColorAsState(if (on) Color.White else GlassMuted, tween(200), label = "segFg")
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .springClick(enabled = !on, onClick = { onSelect(i) })
-                    .graphicsLayer { val k = 0.96f + 0.04f * pill; scaleX = k; scaleY = k }
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(GlassGradientH, alpha = pill)
-                    .padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-                Text(opt.label, color = fg, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                opt.count?.let { c ->
-                    Spacer(Modifier.width(6.dp))
-                    Box(
-                        Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(if (on) Color.White.copy(alpha = 0.25f) else GlassInk.copy(alpha = 0.06f))
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) { Text("$c", color = fg, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+        val n = options.size.coerceAtLeast(1)
+        val itemW = maxWidth / n
+        val x by androidx.compose.animation.core.animateDpAsState(
+            itemW * selected.coerceIn(0, n - 1),
+            spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+            label = "segX",
+        )
+        // the sliding pill
+        Box(
+            Modifier
+                .offset(x = x)
+                .width(itemW).height(height)
+                .shadow(8.dp, RoundedCornerShape(height / 2), ambientColor = GlassAccent, spotColor = GlassAccent)
+                .clip(RoundedCornerShape(height / 2))
+                .background(GlassGradientH)
+        )
+        Row(Modifier.fillMaxWidth().height(height)) {
+            options.forEachIndexed { i, opt ->
+                val on = i == selected
+                val fg by animateColorAsState(if (on) Color.White else GlassSub, tween(220), label = "segFg")
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(height / 2))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = !on) {
+                            hf.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(i)
+                        },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
+                    Text(opt.label, color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    opt.count?.let { c ->
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            Modifier.clip(RoundedCornerShape(10.dp))
+                                .background(if (on) Color.White.copy(alpha = 0.25f) else GlassInk.copy(alpha = 0.06f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) { Text("$c", color = fg, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+                    }
                 }
             }
         }

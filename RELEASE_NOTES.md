@@ -1,5 +1,7 @@
-## Olive 1.3.2 · Navigation fix
+## Olive 1.3.3 · Smoother Library
 
-- Tapping **Home** while you're on your Profile now takes you Home. Before, it kept opening Profile again.
-- Screens opened from a tab (Profile, an album, a group playlist…) keep that tab lit in the dock.
-- Tapping the tab you're already in jumps back to its first screen.
+- **Songs | Audiobooks switch redesigned**: one green pill slides smoothly to the side you pick. The other side no longer flickers.
+- Switching between Songs and Audiobooks is a clean fade and slide, without a double image.
+- Favorites / Playlists and the filter chips fold away smoothly for audiobooks, so the page no longer jumps.
+- New **Continue listening** card in Audiobooks: the book cover fills the card, with white text, a progress bar and a big play button.
+- Inbox | Friends | Requests use the same sliding pill.

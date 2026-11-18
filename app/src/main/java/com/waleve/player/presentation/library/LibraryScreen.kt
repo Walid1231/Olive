@@ -1,6 +1,9 @@
 package com.waleve.player.presentation.library
 
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import com.waleve.player.presentation.components.springClick
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.horizontalScroll
@@ -203,10 +206,17 @@ fun LibraryScreen(
             selected = if (isBooks) 1 else 0,
             onSelect = { viewModel.selectTab(if (it == 1) 1 else 0) },
             modifier = Modifier.padding(horizontal = 20.dp),
+            height = 50.dp,
         )
         Spacer(Modifier.height(12.dp))
 
-        if (!isBooks) {
+        // Song-only shortcuts slide away smoothly for audiobooks (no jump)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isBooks,
+            enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(260)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(240)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)),
+        ) {
+          Column {
             // Favorites / Playlists tiles
             Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 LibraryTile(Icons.Filled.Favorite, "Favorites", "$favoriteCount songs", Color(0xFFFFB3C1), onFavoritesClick, Modifier.weight(1f))
@@ -223,6 +233,7 @@ fun LibraryScreen(
                 }
             }
             Spacer(Modifier.height(6.dp))
+          }
         }
         if (hiddenCount > 0 && selectedTab == 0) {
             Text(
@@ -241,9 +252,13 @@ fun LibraryScreen(
         androidx.compose.animation.AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
-                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(240)) +
-                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { w -> if (targetState > initialState) w / 12 else -w / 12 }) togetherWith
-                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+                val dir = if (targetState > initialState) 1 else -1
+                // old page fades out first, new one fades + slides in right after → no double image / flash
+                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 90)) +
+                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(280, delayMillis = 60)) { w -> dir * w / 10 }) togetherWith
+                    (androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90)) +
+                        androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(200)) { w -> -dir * w / 14 }) using
+                    androidx.compose.animation.SizeTransform(clip = false)
             },
             label = "libraryTab",
             modifier = Modifier.weight(1f),
@@ -597,21 +612,40 @@ private fun AudiobooksTab(
         resume?.let { ch ->
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 val book = files.filter { it.album == ch.album && it.artist == ch.artist }
-                Row(
-                    Modifier.springClick {
-                        val i = book.indexOfFirst { it.id == ch.id }; onSongClick(book, i.coerceAtLeast(0))
-                    }.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                val idx = book.indexOfFirst { it.id == ch.id }.coerceAtLeast(0)
+                val done = if (book.isEmpty()) 0f else book.count { it.playCount > 0 }.toFloat() / book.size
+                // Hero "continue" card: the cover fills it, white text on a dark fade
+                Box(
+                    Modifier.springClick { onSongClick(book, idx) }
+                        .fillMaxWidth().height(132.dp)
+                        .shadow(12.dp, RoundedCornerShape(26.dp), ambientColor = Color(0x3323305A), spotColor = Color(0x3323305A))
+                        .clip(RoundedCornerShape(26.dp)),
                 ) {
-                    Artwork(ch.albumArtUri, Modifier.size(60.dp), seed = ch.album.hashCode())
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Overline("Pick up where you left")
-                        Text(ch.album.ifBlank { ch.title }, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Chapter ${book.indexOfFirst { it.id == ch.id } + 1} of ${book.size}  ·  ${ch.title}", color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Box(Modifier.size(44.dp).clip(CircleShape).background(GlassGradient), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.PlayArrow, "Resume", tint = Color.White, modifier = Modifier.size(24.dp))
+                    Artwork(ch.albumArtUri, Modifier.fillMaxSize(), corner = 0.dp, seed = ch.album.hashCode())
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.78f), Color.Black.copy(alpha = 0.45f), Color.Black.copy(alpha = 0.15f)))
+                        )
+                    )
+                    Row(Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Artwork(ch.albumArtUri, Modifier.size(84.dp).border(1.5.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(16.dp)), corner = 16.dp, seed = ch.album.hashCode())
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("CONTINUE LISTENING", color = Color.White.copy(alpha = 0.8f), fontWeight = FontWeight.ExtraBold, fontSize = 10.sp, letterSpacing = 1.2.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text(ch.album.ifBlank { ch.title }, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 6f)))
+                            Text("Chapter ${idx + 1} of ${book.size}  ·  ${ch.title}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(8.dp))
+                            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.25f))) {
+                                Box(Modifier.fillMaxWidth(done.coerceIn(0.03f, 1f)).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Box(
+                            Modifier.size(48.dp).shadow(10.dp, CircleShape, ambientColor = GlassAccent, spotColor = GlassAccent).clip(CircleShape).background(GlassGradient),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Filled.PlayArrow, "Resume", tint = Color.White, modifier = Modifier.size(26.dp)) }
                     }
                 }
             }
