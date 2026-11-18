@@ -25,8 +25,8 @@ android {
         applicationId = "com.waleve.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.4.1"
+        versionCode = 13
+        versionName = "1.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -42,7 +42,7 @@ android {
     }
 
     // One APK per phone type instead of one fat APK with both: the 64-bit one (almost every
-    // phone since 2017) is ~45 MB smaller. Old 32-bit phones get Olive-32bit.apk.
+    // phone since 2017) is ~45 MB smaller. Old 32-bit phones get Olive_32bit.apk.
     splits {
         abi {
             isEnable = true
@@ -103,7 +103,7 @@ android {
         outputs.all {
             val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
             val abi = outputImpl.getFilter(com.android.build.OutputFile.ABI)
-            outputImpl.outputFileName = if (abi == "armeabi-v7a") "Olive-32bit.apk" else "Olive.apk"
+            outputImpl.outputFileName = if (abi == "armeabi-v7a") "Olive_32bit.apk" else "Olive.apk"
         }
     }
 }

@@ -69,7 +69,7 @@ jobs:
         id: apk
         run: |
           APK=$(find app/build/outputs/apk/release -name 'Olive.apk' | head -1)
-          APK32=$(find app/build/outputs/apk/release -name 'Olive-32bit.apk' | head -1)
+          APK32=$(find app/build/outputs/apk/release -name 'Olive_32bit.apk' | head -1)
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "path32=$APK32" >> "$GITHUB_OUTPUT"
           ls -la "$APK" "$APK32"

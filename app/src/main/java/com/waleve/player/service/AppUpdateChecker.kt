@@ -113,10 +113,10 @@ class AppUpdateChecker @Inject constructor(
             // Only show update if remote version is strictly newer
             if (isNewerVersion(remoteVersion, localVersion)) {
                 // Find the APK asset
-                // 64-bit phones get Olive.apk, old 32-bit phones Olive-32bit.apk
+                // 64-bit phones get Olive.apk, old 32-bit phones Olive_32bit.apk
                 val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
                 val apks = release.assets.filter { it.name.endsWith(".apk") }
-                val apkAsset = (if (is64) apks.firstOrNull { it.name == "Olive.apk" } else apks.firstOrNull { it.name == "Olive-32bit.apk" })
+                val apkAsset = (if (is64) apks.firstOrNull { it.name == "Olive.apk" } else apks.firstOrNull { it.name == "Olive_32bit.apk" })
                     ?: apks.firstOrNull()
                 if (apkAsset != null) {
                     return@withContext UpdateInfo(
