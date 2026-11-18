@@ -70,6 +70,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -525,8 +526,7 @@ fun NowPlayingScreen(
                 // Sleep timer inline
                 val isSleepActive = sleepTimerRemaining > 0
                 val sleepLabel = if (isSleepActive) {
-                    val s = sleepTimerRemaining / 1000
-                    "💤 %d:%02d".format(s / 60, s % 60)
+                    "⏾ " + formatSleep(sleepTimerRemaining)
                 } else null
                 if (sleepLabel != null) {
                     Text(
@@ -547,30 +547,18 @@ fun NowPlayingScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Sleep Timer
-                val isSleepActive = sleepTimerRemaining > 0
+                val sleepVm: SleepTimerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                val sleepEot by sleepVm.endOfTrack.collectAsState()
+                val isSleepActive = sleepTimerRemaining > 0 || sleepEot
                 Box {
                     SpotifyActionButton(
                         icon = Icons.Filled.Timer,
-                        label = if (isSleepActive) {
-                            val s = sleepTimerRemaining / 1000
-                            "%d:%02d".format(s / 60, s % 60)
-                        } else "Sleep",
+                        label = when { sleepEot -> "End of track"; isSleepActive -> formatSleep(sleepTimerRemaining); else -> "Sleep" },
                         tint = if (isSleepActive) accentColor else NpInk.copy(alpha = 0.55f),
                         isActive = isSleepActive,
                         onClick = { showTimerMenu = true },
                     )
-                    DropdownMenu(
-                        expanded = showTimerMenu,
-                        onDismissRequest = { showTimerMenu = false },
-                        modifier = Modifier.background(gc.surfaceCard),
-                    ) {
-                        listOf(0, 5, 10, 15, 30, 45, 60).forEach { mins ->
-                            DropdownMenuItem(
-                                text = { Text(if (mins == 0) "Off" else "$mins min", color = gc.textPrimary) },
-                                onClick = { onSetSleepTimer(mins); showTimerMenu = false },
-                            )
-                        }
-                    }
+                    if (showTimerMenu) SleepTimerSheet(onDismiss = { showTimerMenu = false })
                 }
 
                 // Speed

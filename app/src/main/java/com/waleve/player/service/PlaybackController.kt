@@ -80,15 +80,27 @@ class PlaybackController @Inject constructor(
     private val _sleepTimerRemaining = MutableStateFlow(0L)
     val sleepTimerRemaining: StateFlow<Long> = _sleepTimerRemaining.asStateFlow()
     private var sleepTimerJob: Job? = null
+    /** "Stop after the current song / chapter" mode. */
+    private val _sleepEndOfTrack = MutableStateFlow(false)
+    val sleepEndOfTrack: StateFlow<Boolean> = _sleepEndOfTrack.asStateFlow()
+    /** Gently lower the volume during the last 30 s before stopping. */
+    private val sleepPrefs by lazy { context.getSharedPreferences("sleep_timer", Context.MODE_PRIVATE) }
+    private val _sleepFadeOut = MutableStateFlow(true)
+    val sleepFadeOut: StateFlow<Boolean> = _sleepFadeOut.asStateFlow()
+    /** Length of the running timer (ms), for progress rings. */
+    private val _sleepTimerTotal = MutableStateFlow(0L)
+    val sleepTimerTotal: StateFlow<Long> = _sleepTimerTotal.asStateFlow()
 
     companion object {
         private const val SLEEP_TIMER_CHANNEL_ID = "waleve_sleep_timer"
         private const val SLEEP_TIMER_NOTIFICATION_ID = 9001
+        private const val FADE_MS = 30_000L
     }
 
     init {
         connectToService()
         createSleepTimerNotificationChannel()
+        _sleepFadeOut.value = sleepPrefs.getBoolean("fade", true)
     }
 
     private fun connectToService() {
@@ -113,6 +125,16 @@ class PlaybackController @Inject constructor(
                 updateState()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Sleep mode "end of track": the previous item just finished → stop here
+                if (_sleepEndOfTrack.value && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                        reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)) {
+                    mediaController?.pause()
+                    mediaController?.seekTo(0)
+                    _sleepEndOfTrack.value = false
+                    cancelSleepTimerNotification()
+                    updateState()
+                    return
+                }
                 // Auto-advanced into another audiobook chapter → continue where it was left
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
@@ -260,37 +282,80 @@ class PlaybackController @Inject constructor(
 
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
+        restoreVolume()
+        _sleepEndOfTrack.value = false
         cancelSleepTimerNotification()
 
         if (minutes <= 0) {
             _sleepTimerRemaining.value = 0
+            _sleepTimerTotal.value = 0
             return
         }
+        startCountdown(minutes * 60 * 1000L)
+    }
 
+    /** Add time to a running timer (or start one). */
+    fun extendSleepTimer(minutes: Int) {
+        val left = _sleepTimerRemaining.value
+        if (left <= 0) { setSleepTimer(minutes); return }
+        val add = minutes * 60 * 1000L
+        _sleepTimerTotal.update { it + add }
+        _sleepTimerRemaining.update { it + add }
+        restoreVolume()
+    }
+
+    /** Stop when the current song / chapter ends. */
+    fun setSleepAtEndOfTrack() {
+        sleepTimerJob?.cancel()
+        restoreVolume()
+        _sleepTimerRemaining.value = 0
+        _sleepTimerTotal.value = 0
+        _sleepEndOfTrack.value = true
+        showSleepTimerNotification(-1)
+    }
+
+    fun setSleepFadeOut(enabled: Boolean) {
+        _sleepFadeOut.value = enabled
+        sleepPrefs.edit().putBoolean("fade", enabled).apply()
+        if (!enabled) restoreVolume()
+    }
+
+    private fun startCountdown(totalMs: Long) {
+        _sleepTimerTotal.value = totalMs
+        _sleepTimerRemaining.value = totalMs
         sleepTimerJob = scope.launch {
-            _sleepTimerRemaining.value = minutes * 60 * 1000L
             showSleepTimerNotification(_sleepTimerRemaining.value)
-
             while (_sleepTimerRemaining.value > 0) {
                 delay(1000)
-                _sleepTimerRemaining.update { it - 1000 }
-
-
-                // Update notification every second for live MM:SS countdown
-                showSleepTimerNotification(_sleepTimerRemaining.value)
-
+                _sleepTimerRemaining.update { (it - 1000).coerceAtLeast(0) }
+                val left = _sleepTimerRemaining.value
+                // Fade out over the last 30 seconds
+                if (_sleepFadeOut.value && left in 1..FADE_MS) {
+                    mediaController?.volume = (left.toFloat() / FADE_MS).coerceIn(0.05f, 1f)
+                }
+                // Refresh the notification every 5 s (and every second in the last minute)
+                if (left <= 60_000 || (left / 1000) % 5 == 0L) showSleepTimerNotification(left)
             }
-
-            // Timer expired — pause playback
+            // Timer expired — pause playback, then put the volume back for next time
             pause()
+            delay(300)
+            restoreVolume()
             _sleepTimerRemaining.value = 0
+            _sleepTimerTotal.value = 0
             cancelSleepTimerNotification()
         }
     }
 
+    private fun restoreVolume() {
+        try { if ((mediaController?.volume ?: 1f) < 1f) mediaController?.volume = 1f } catch (_: Exception) { }
+    }
+
     fun cancelSleepTimer() {
         sleepTimerJob?.cancel()
+        restoreVolume()
         _sleepTimerRemaining.value = 0
+        _sleepTimerTotal.value = 0
+        _sleepEndOfTrack.value = false
         cancelSleepTimerNotification()
     }
 
@@ -313,9 +378,14 @@ class PlaybackController @Inject constructor(
 
     private fun showSleepTimerNotification(remainingMs: Long) {
         val totalSeconds = remainingMs / 1000
-        val minutes = totalSeconds / 60
+        val h = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
-        val timeText = "%d:%02d".format(minutes, seconds)
+        val timeText = if (h > 0) "%d:%02d:%02d".format(h, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+        fun action(act: String, code: Int) = PendingIntent.getBroadcast(
+            context, code, Intent(context, SleepTimerReceiver::class.java).setAction(act),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -327,9 +397,11 @@ class PlaybackController @Inject constructor(
 
         val notification = NotificationCompat.Builder(context, SLEEP_TIMER_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher_foreground)
-            .setContentTitle("💤 Sleep Timer Active")
-            .setContentText("Music will stop in $timeText")
-            .setSubText("WaLEve Sleep Timer")
+            .setContentTitle("Sleep timer on")
+            .setContentText(if (remainingMs < 0) "Music stops after this track" else "Music stops in $timeText")
+            .setSubText("Olive")
+            .addAction(0, "Cancel", action(SleepTimerReceiver.ACTION_CANCEL, 11))
+            .apply { if (remainingMs >= 0) addAction(0, "+5 min", action(SleepTimerReceiver.ACTION_EXTEND, 12)) }
             .setOngoing(true)
             .setSilent(true)
             .setShowWhen(false)

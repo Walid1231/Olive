@@ -1,5 +1,11 @@
 package com.waleve.player.presentation.player
 
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.font.FontWeight
@@ -96,11 +102,22 @@ fun MiniPlayer(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (sleepTimerRemaining > 0) {
-                val totalSec = sleepTimerRemaining / 1000
-                Text("⏾ %d:%02d".format(totalSec / 60, totalSec % 60), color = GlassAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            val sleepVm: SleepTimerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            val sleepEot by sleepVm.endOfTrack.collectAsStateWithLifecycle()
+            var sleepSheet by remember { mutableStateOf(false) }
+            if (sleepTimerRemaining > 0 || sleepEot) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassAccent.copy(alpha = 0.12f))
+                        .clickable { sleepSheet = true }.padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = GlassAccent, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(if (sleepEot) "End" else formatSleep(sleepTimerRemaining), color = GlassAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
                 Spacer(modifier = Modifier.width(6.dp))
             }
+            if (sleepSheet) SleepTimerSheet(onDismiss = { sleepSheet = false })
             Box(
                 modifier = Modifier.size(40.dp).clip(CircleShape).background(GlassGradient).clickable(onClick = onPlayPause),
                 contentAlignment = Alignment.Center,

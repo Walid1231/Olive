@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -32,6 +33,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -110,6 +113,10 @@ fun HomeScreen(
                     Text(greeting, color = GlassSub, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Text("$firstName ✦", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                var sleepSheet by remember { mutableStateOf(false) }
+                GlassIconButton(Icons.Rounded.Bedtime, { sleepSheet = true }, contentDescription = "Sleep timer")
+                if (sleepSheet) com.waleve.player.presentation.player.SleepTimerSheet(onDismiss = { sleepSheet = false })
+                Spacer(Modifier.width(8.dp))
                 Box {
                     GlassIconButton(Icons.Rounded.Notifications, onOpenFriends, contentDescription = "Inbox")
                     if (notificationCount > 0) {
