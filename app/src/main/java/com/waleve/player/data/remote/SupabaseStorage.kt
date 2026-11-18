@@ -119,6 +119,26 @@ class SupabaseStorage @Inject constructor(
         }
     }
 
+    /** Delete an uploaded share (public URL → object). True if gone (or already gone). */
+    suspend fun deleteByPublicUrl(publicUrl: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val marker = "/storage/v1/object/public/"
+            val rest = publicUrl.substringAfter(marker, "")
+            if (rest.isEmpty()) return@runCatching false
+            val bucket = rest.substringBefore('/')
+            val path = rest.substringAfter('/')
+            val base = BuildConfig.SUPABASE_URL.trimEnd('/')
+            val key = BuildConfig.SUPABASE_ANON_KEY
+            val req = Request.Builder()
+                .url("$base/storage/v1/object/$bucket/$path")
+                .header("apikey", key)
+                .header("Authorization", "Bearer $key")
+                .delete()
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful || it.code == 404 }
+        }.getOrDefault(false)
+    }
+
     /**
      * Profile picture: shrink to max 512 px JPEG (~50–100 KB) and upload to the public `olive-avatars` bucket.
      */

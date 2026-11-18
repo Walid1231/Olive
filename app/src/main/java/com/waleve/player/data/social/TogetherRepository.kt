@@ -60,6 +60,7 @@ class TogetherRepository @Inject constructor(
     private val auth: FirebaseAuth,
     private val player: PlaybackController,
     private val resolver: RemoteMediaResolver,
+    private val chatStore: ChatStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs by lazy { context.getSharedPreferences("together", Context.MODE_PRIVATE) }
@@ -177,6 +178,8 @@ class TogetherRepository @Inject constructor(
             isPlaying = doc.getBoolean("isPlaying") ?: false,
             positionMs = doc.getLong("positionMs") ?: 0L,
             updatedAt = doc.getLong("updatedAt") ?: 0L,
+            openControl = doc.getBoolean("openControl") ?: false,
+            startedAt = doc.getLong("startedAt") ?: 0L,
         )
     }
 
@@ -204,7 +207,7 @@ class TogetherRepository @Inject constructor(
     private var hostJob: Job? = null
     private var hostListener: ListenerRegistration? = null
 
-    suspend fun startSession(friendUids: List<String>): Result<Unit> = runCatching {
+    suspend fun startSession(friendUids: List<String>, openControl: Boolean = false): Result<Unit> = runCatching {
         val me = uid ?: error("Please sign in first")
         if (friendUids.isEmpty()) error("Pick at least one friend")
         leaveSession(silent = true)
@@ -216,10 +219,18 @@ class TogetherRepository @Inject constructor(
             "hostUid" to me, "hostName" to name, "hostAvatar" to avatar, "active" to true,
             "invited" to friendUids.distinct(), "members" to listOf(me), "memberNames" to mapOf(me to name),
             "preparing" to true, "isPlaying" to false, "positionMs" to 0L,
-            "startedAt" to now, "updatedAt" to now,
+            "startedAt" to now, "updatedAt" to now, "openControl" to openControl,
         )).await()
         sendInvites(me, name, avatar, friendUids)
         runHost(me)
+        attachChat(me, now, name)
+    }
+
+    /** Host: let guests control playback (and pick songs) too — or not. */
+    suspend fun setOpenControl(on: Boolean) {
+        val me = uid ?: return
+        if (_hosting.value == null) return
+        runCatching { sessions.document(me).update("openControl", on).await() }
     }
 
     suspend fun inviteMore(friendUids: List<String>): Result<Unit> = runCatching {
@@ -250,9 +261,31 @@ class TogetherRepository @Inject constructor(
         hostJob?.cancel()
         hostListener?.remove()
         val ref = sessions.document(me)
+        var lastCommand: String? = null
         hostListener = ref.addSnapshotListener { snap, _ ->
             val s = snap?.let(::parseSession)
             _hosting.value = s?.takeIf { it.active }
+            // A guest pressed something (only when "Everyone can control" is on)
+            val cmd = snap?.get("command") as? Map<*, *> ?: return@addSnapshotListener
+            val id = cmd["id"] as? String ?: return@addSnapshotListener
+            if (lastCommand == null) { lastCommand = id; return@addSnapshotListener }   // ignore an old one on start
+            if (id == lastCommand || s?.openControl != true) return@addSnapshotListener
+            lastCommand = id
+            val by = cmd["byName"] as? String ?: "A friend"
+            when (cmd["type"]) {
+                "play" -> { player.remotePlay(); say("$by pressed play") }
+                "pause" -> { player.remotePause(); say("$by paused") }
+                "seek" -> (cmd["positionMs"] as? Number)?.toLong()?.let { player.remoteSeek(it) }
+                "next" -> { player.remoteNext(); say("$by skipped") }
+                "prev" -> player.remotePrevious()
+                "track" -> RemoteTrack.fromMap(cmd["track"] as? Map<*, *>)?.let { t ->
+                    scope.launch {
+                        val song = resolver.toSong(t) ?: run { say("Couldn't play “${t.title}”"); return@launch }
+                        player.setQueue(listOf(song), 0)
+                        say("$by picked “${t.title}”")
+                    }
+                }
+            }
         }
         hostJob = scope.launch {
             var songId: Long? = null
@@ -324,7 +357,15 @@ class TogetherRepository @Inject constructor(
         hostListener?.remove(); hostListener = null
         _hosting.value = null
         _hostUpload.value = null
+        detachChat()
         runCatching { sessions.document(me).update(mapOf("active" to false, "updatedAt" to System.currentTimeMillis())).await() }
+        // Chats live on the phones — wipe this session's messages from the cloud
+        runCatching {
+            val docs = sessions.document(me).collection("messages").get().await().documents
+            docs.chunked(400).forEach { chunk ->
+                val b = firestore.batch(); chunk.forEach { b.delete(it.reference) }; b.commit().await()
+            }
+        }
     }
 
     // ─── Joining ─────────────────────────────────────────────────────────────
@@ -345,7 +386,9 @@ class TogetherRepository @Inject constructor(
         if (me !in first.invited) error("You're not invited to this session")
         val myName = users.document(me).get().await().getString("displayName") ?: "Friend"
         ref.update(mapOf("members" to FieldValue.arrayUnion(me), "memberNames.$me" to myName)).await()
+        myGuestName = myName
         runGuest(me, ref.id)
+        attachChat(hostUid, first.startedAt, first.hostName)
     }
 
     private fun runGuest(me: String, hostUid: String) {
@@ -371,10 +414,10 @@ class TogetherRepository @Inject constructor(
                 return
             }
             warnedOffline = false
-            if (s.isPlaying && !st.isPlaying) player.play()
-            if (!s.isPlaying && st.isPlaying) player.pause()
+            if (s.isPlaying && !st.isPlaying) player.remotePlay()
+            if (!s.isPlaying && st.isPlaying) player.remotePause()
             val exp = expectedPos(s)
-            if (abs(st.currentPosition - exp) > 2_500) player.seekTo(exp)
+            if (abs(st.currentPosition - exp) > 2_500) player.remoteSeek(exp)
         }
 
         suspend fun apply(s: ListenSession) = applyLock.withLock {
@@ -406,13 +449,48 @@ class TogetherRepository @Inject constructor(
         }
         guestJob?.cancel()
         guestJob = scope.launch {
+            // What the guest presses: shared with everyone (open control) or undone (host only)
+            launch {
+                player.userActions.collect { a ->
+                    val s = _guest.value ?: return@collect
+                    if (a is PlaybackController.UserAction.SleepStop) {
+                        say("Sleep timer: left ${s.hostName}'s session"); leaveSession(silent = true); return@collect
+                    }
+                    if (!s.openControl) {
+                        say("Only ${s.hostName} controls this session")
+                        delay(300); if (!applyLock.isLocked) sync(s)
+                        return@collect
+                    }
+                    when (a) {
+                        PlaybackController.UserAction.Play -> sendCommand(s, mapOf("type" to "play"))
+                        PlaybackController.UserAction.Pause -> sendCommand(s, mapOf("type" to "pause"))
+                        is PlaybackController.UserAction.Seek -> sendCommand(s, mapOf("type" to "seek", "positionMs" to a.positionMs))
+                        PlaybackController.UserAction.Next -> sendCommand(s, mapOf("type" to "next"))
+                        PlaybackController.UserAction.Previous -> sendCommand(s, mapOf("type" to "prev"))
+                        else -> {}
+                    }
+                }
+            }
             while (isActive) {
                 delay(4_000)
                 val s = _guest.value ?: continue
                 val st = player.playerState.value
-                // The guest picked another song themselves → they left the session
+                // The guest picked another song themselves
                 if (expectedSongId != null && st.currentSong != null && st.currentSong.id != expectedSongId &&
                     System.currentTimeMillis() - loadedAt > 8_000) {
+                    if (s.openControl) {
+                        // …play it for everyone
+                        val song = st.currentSong
+                        expectedSongId = song.id
+                        loadedAt = System.currentTimeMillis()
+                        say("Sending “${song.title}” to everyone…")
+                        val r = resolver.ensure(song)
+                        val t = r.getOrNull()
+                        if (t == null) { say("Couldn't share “${song.title}”: ${r.exceptionOrNull()?.message}"); continue }
+                        currentKey = t.key
+                        sendCommand(s, mapOf("type" to "track", "track" to t.toMap()))
+                        continue
+                    }
                     say("You left ${s.hostName}'s session")
                     leaveSession(silent = true)
                     break
@@ -422,11 +500,30 @@ class TogetherRepository @Inject constructor(
         }
     }
 
+    private var myGuestName = "Friend"
+
+    private suspend fun sendCommand(s: ListenSession, cmd: Map<String, Any>) {
+        val me = uid ?: return
+        runCatching {
+            sessions.document(s.hostUid).update(
+                "command", cmd + mapOf("id" to java.util.UUID.randomUUID().toString(), "by" to me, "byName" to myGuestName, "at" to System.currentTimeMillis()),
+            ).await()
+        }.onFailure { say("Couldn't reach ${s.hostName}") }
+    }
+
+    /** Guest buttons in the Listen Together sheet. */
+    fun guestControl(type: String) {
+        val s = _guest.value ?: return
+        if (!s.openControl) { say("Only ${s.hostName} controls this session"); return }
+        scope.launch { sendCommand(s, mapOf("type" to type)) }
+    }
+
     suspend fun leaveSession(silent: Boolean = false) {
         val s = _guest.value
         guestJob?.cancel(); guestJob = null
         guestListener?.remove(); guestListener = null
         _guest.value = null
+        if (s != null) detachChat()
         val me = uid ?: return
         if (s != null) {
             runCatching {
@@ -435,6 +532,69 @@ class TogetherRepository @Inject constructor(
             if (!silent) say("Left ${s.hostName}'s session")
         }
     }
+
+    // ─── Chat (kept on the phone; Firestore only relays) ─────────────────────
+    private val _chat = MutableStateFlow<List<com.waleve.player.domain.model.ChatMessage>>(emptyList())
+    val chat: StateFlow<List<com.waleve.player.domain.model.ChatMessage>> = _chat.asStateFlow()
+    private val _chatUnread = MutableStateFlow(0)
+    val chatUnread: StateFlow<Int> = _chatUnread.asStateFlow()
+    private var chatOpen = false
+    private var chatListener: ListenerRegistration? = null
+    private var chatSession: Triple<String, Long, String>? = null   // hostUid, startedAt, hostName
+
+    private fun chatKey(hostUid: String, startedAt: Long) = "${hostUid}_$startedAt"
+
+    private fun attachChat(hostUid: String, startedAt: Long, hostName: String) {
+        detachChat()
+        chatSession = Triple(hostUid, startedAt, hostName)
+        val known = chatStore.load(chatKey(hostUid, startedAt))?.messages.orEmpty().associateBy { it.id }.toMutableMap()
+        _chat.value = known.values.sortedBy { it.at }
+        _chatUnread.value = 0
+        val me = uid
+        chatListener = sessions.document(hostUid).collection("messages")
+            .whereGreaterThanOrEqualTo("at", startedAt)
+            .addSnapshotListener { snap, _ ->
+                var fresh = 0
+                snap?.documents?.forEach { d ->
+                    val m = com.waleve.player.domain.model.ChatMessage(
+                        d.id, d.getString("uid") ?: "", d.getString("name") ?: "Friend",
+                        d.getString("text") ?: "", d.getLong("at") ?: 0L,
+                    )
+                    if (m.id !in known) { known[m.id] = m; if (m.uid != me) fresh++ }
+                }
+                val list = known.values.sortedBy { it.at }
+                _chat.value = list
+                if (!chatOpen && fresh > 0) {
+                    _chatUnread.value += fresh
+                    list.lastOrNull { it.uid != me }?.let { say("💬 ${it.name.substringBefore(' ')}: ${it.text}") }
+                }
+                chatStore.save(chatKey(hostUid, startedAt), hostName, startedAt, list)
+            }
+    }
+
+    private fun detachChat() {
+        chatListener?.remove(); chatListener = null
+        chatSession?.let { (h, t, n) -> chatStore.save(chatKey(h, t), n, t, _chat.value) }
+        chatSession = null
+        _chat.value = emptyList()
+        _chatUnread.value = 0
+    }
+
+    fun setChatOpen(open: Boolean) { chatOpen = open; if (open) _chatUnread.value = 0 }
+
+    suspend fun sendChat(text: String): Result<Unit> = runCatching {
+        val me = uid ?: error("Please sign in first")
+        val (hostUid, _, _) = chatSession ?: error("Not in a session")
+        val clean = text.trim().take(300)
+        if (clean.isEmpty()) return@runCatching
+        val name = if (_hosting.value != null) _hosting.value?.hostName ?: "Host" else myGuestName
+        sessions.document(hostUid).collection("messages").add(
+            mapOf("uid" to me, "name" to name, "text" to clean, "at" to System.currentTimeMillis()),
+        ).await()
+    }
+
+    /** Old session chats saved on this phone. */
+    fun chatHistory(): List<com.waleve.player.domain.model.ChatLog> = chatStore.history()
 
     /** Play what a friend is playing (on my own, not synced). */
     suspend fun playFriendTrack(np: NowPlaying): Boolean {

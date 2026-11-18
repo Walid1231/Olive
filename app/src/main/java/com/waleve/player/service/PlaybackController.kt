@@ -173,6 +173,7 @@ class PlaybackController @Inject constructor(
                     mediaController?.pause()
                     mediaController?.seekTo(0)
                     _sleepEndOfTrack.value = false
+                    _userActions.tryEmit(UserAction.SleepStop)
                     cancelSleepTimerNotification()
                     updateState()
                     return
@@ -232,14 +233,34 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    fun play() { mediaController?.play() }
-    fun pause() { mediaController?.pause() }
-    fun playPause() {
-        mediaController?.let { if (it.isPlaying) it.pause() else it.play() }
+    /** What the user did with the controls (Listen Together uses this to share or undo it). */
+    sealed interface UserAction {
+        data object Play : UserAction
+        data object Pause : UserAction
+        data class Seek(val positionMs: Long) : UserAction
+        data object Next : UserAction
+        data object Previous : UserAction
+        /** The sleep timer stopped the music. */
+        data object SleepStop : UserAction
     }
-    fun next() { mediaController?.seekToNextMediaItem() }
-    fun previous() { mediaController?.seekToPreviousMediaItem() }
-    fun seekTo(position: Long) { mediaController?.seekTo(position) }
+    private val _userActions = kotlinx.coroutines.flow.MutableSharedFlow<UserAction>(extraBufferCapacity = 16)
+    val userActions: kotlinx.coroutines.flow.SharedFlow<UserAction> = _userActions
+
+    fun play() { mediaController?.play(); _userActions.tryEmit(UserAction.Play) }
+    fun pause() { mediaController?.pause(); _userActions.tryEmit(UserAction.Pause) }
+    fun playPause() {
+        mediaController?.let { if (it.isPlaying) pause() else play() }
+    }
+    fun next() { mediaController?.seekToNextMediaItem(); _userActions.tryEmit(UserAction.Next) }
+    fun previous() { mediaController?.seekToPreviousMediaItem(); _userActions.tryEmit(UserAction.Previous) }
+    fun seekTo(position: Long) { mediaController?.seekTo(position); _userActions.tryEmit(UserAction.Seek(position)) }
+
+    // Same as above but silent: used when another phone (Listen Together) tells us what to do
+    fun remotePlay() { mediaController?.play() }
+    fun remotePause() { mediaController?.pause() }
+    fun remoteSeek(position: Long) { mediaController?.seekTo(position) }
+    fun remoteNext() { mediaController?.seekToNextMediaItem() }
+    fun remotePrevious() { mediaController?.seekToPreviousMediaItem() }
 
     private var queueJob: Job? = null
 
@@ -460,7 +481,8 @@ class PlaybackController @Inject constructor(
                 if (left <= 60_000 || (left / 1000) % 5 == 0L) showSleepTimerNotification(left)
             }
             // Timer expired — pause playback, then put the volume back for next time
-            pause()
+            mediaController?.pause()
+            _userActions.tryEmit(UserAction.SleepStop)
             delay(300)
             restoreVolume()
             _sleepTimerRemaining.value = 0

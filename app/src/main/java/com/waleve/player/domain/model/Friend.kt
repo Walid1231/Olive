@@ -102,6 +102,10 @@ data class InboxNotification(
     val reaction: String? = null,        // set for REACTION (emoji)
     val message: String? = null,         // optional short reply text
     val myReaction: String? = null,      // my reaction to this SONG_SHARED item
+    // ── v1.4: auto-save shared files ──
+    val transferId: String? = null,      // temporary upload to clean up after everyone saved it
+    val savedPath: String? = null,       // where this phone saved it (auto-save)
+    val saveFailed: Boolean = false,     // the file was gone / couldn't be saved
 ) {
     val isAudiobook: Boolean get() = mediaType == "audiobook"
     /** Can be played / downloaded: either a YouTube id or an uploaded file. */

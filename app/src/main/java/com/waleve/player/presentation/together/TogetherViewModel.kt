@@ -49,7 +49,16 @@ class TogetherViewModel @Inject constructor(
         }
     }
 
-    fun start(friendUids: List<String>) = run { together.startSession(friendUids) }
+    val chat = together.chat
+    val chatUnread = together.chatUnread
+    val myUid: String? get() = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+    fun chatHistory() = together.chatHistory()
+    fun setChatOpen(open: Boolean) = together.setChatOpen(open)
+    fun send(text: String) { viewModelScope.launch { together.sendChat(text).onFailure { _error.value = it.message } } }
+    fun setOpenControl(on: Boolean) { viewModelScope.launch { together.setOpenControl(on) } }
+    fun guestControl(type: String) = together.guestControl(type)
+
+    fun start(friendUids: List<String>, openControl: Boolean = false) = run { together.startSession(friendUids, openControl) }
     fun inviteMore(friendUids: List<String>) = run { together.inviteMore(friendUids) }
     fun join(hostUid: String) = run { together.joinSession(hostUid) }
     fun end() = run { together.endSession(); Result.success(Unit) }

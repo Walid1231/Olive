@@ -135,6 +135,8 @@ fun FriendsScreen(
     val activity by togetherVm.activity.collectAsStateWithLifecycle()
     val invites by togetherVm.invites.collectAsStateWithLifecycle()
     val shareActivity by togetherVm.shareActivity.collectAsStateWithLifecycle()
+    val autoSaving by viewModel.autoSaving.collectAsStateWithLifecycle()
+    val autoSave by viewModel.autoSaveEnabled.collectAsStateWithLifecycle()
     var showTogether by remember { mutableStateOf(false) }
     var replyTo by remember { mutableStateOf<InboxNotification?>(null) }
     com.waleve.player.presentation.together.TogetherToasts(togetherVm)
@@ -342,7 +344,7 @@ fun FriendsScreen(
                 )
             }
             when (tab) {
-                0 -> inboxTab(inbox, progress, unread,
+                0 -> inboxTab(inbox, progress, unread, autoSaving,
                     onOpen = { n ->
                         viewModel.markNotificationRead(n.notifId)
                         when (n.type) {
@@ -366,6 +368,7 @@ fun FriendsScreen(
                 1 -> friendsTab(
                     friends, busy, activity, shareActivity,
                     onShareActivity = togetherVm::setShareActivity,
+                    autoSave = autoSave, onAutoSave = viewModel::setAutoSave,
                     onPlay = { togetherVm.playFriend(it) },
                     onRemove = { confirmRemove = it },
                 )
@@ -381,6 +384,7 @@ private fun LazyListScope.inboxTab(
     inbox: List<InboxNotification>,
     progress: Map<String, SharedSongDownloadProgress>,
     unread: Int,
+    autoSaving: Map<String, Float>,
     onOpen: (InboxNotification) -> Unit,
     onPlay: (InboxNotification) -> Unit,
     onDownload: (InboxNotification) -> Unit,
@@ -493,7 +497,20 @@ private fun LazyListScope.inboxTab(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
+                    val saving = autoSaving[n.notifId]
                     when {
+                        // Auto-saved on this phone
+                        n.savedPath != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.CheckCircle, null, tint = GlassAccent, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            Text("On your phone · ${if (n.isAudiobook) "Audiobooks" else "Songs"}", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            GradientButton("Play", { onPlay(n) }, icon = Icons.Rounded.PlayArrow, height = 38.dp)
+                        }
+                        saving != null -> Column {
+                            GlassProgress(saving / 100f, height = 6.dp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Saving to your phone… ${saving.toInt()}%", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                        }
+                        n.saveFailed && n.videoId == null -> Text("This file is no longer available — ask ${n.fromName.substringBefore(' ')} to share it again.", color = GlassMuted, fontSize = 12.sp)
                         !n.isDownloadable -> Text("This item can't be played (it was shared without a file).", color = GlassMuted, fontSize = 12.sp)
                         p?.isComplete == true -> Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Rounded.CheckCircle, null, tint = GlassAccent, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
@@ -537,6 +554,8 @@ private fun LazyListScope.friendsTab(
     activity: Map<String, com.waleve.player.domain.model.NowPlaying>,
     shareActivity: Boolean,
     onShareActivity: (Boolean) -> Unit,
+    autoSave: Boolean,
+    onAutoSave: (Boolean) -> Unit,
     onPlay: (com.waleve.player.domain.model.NowPlaying) -> Unit,
     onRemove: (Friend) -> Unit,
 ) {
@@ -551,6 +570,21 @@ private fun LazyListScope.friendsTab(
             }
             androidx.compose.material3.Switch(
                 shareActivity, onShareActivity,
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = GlassAccent, checkedThumbColor = Color.White),
+            )
+        }
+    }
+    item {
+        Row(
+            Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp), alpha = 0.62f, elevation = 0.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Auto-save songs friends send", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("They land in your library by themselves", color = GlassSub, fontSize = 12.sp)
+            }
+            androidx.compose.material3.Switch(
+                autoSave, onAutoSave,
                 colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = GlassAccent, checkedThumbColor = Color.White),
             )
         }

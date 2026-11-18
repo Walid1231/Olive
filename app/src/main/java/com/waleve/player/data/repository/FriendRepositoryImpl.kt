@@ -286,6 +286,9 @@ class FriendRepositoryImpl @Inject constructor(
                             reaction     = doc.getString("reaction"),
                             message      = doc.getString("message")?.takeIf { it.isNotBlank() },
                             myReaction   = doc.getString("myReaction"),
+                            transferId   = doc.getString("transferId"),
+                            savedPath    = doc.getString("savedPath"),
+                            saveFailed   = doc.getBoolean("saveFailed") ?: false,
                         )
                     }
                     trySend(items)
@@ -372,6 +375,18 @@ class FriendRepositoryImpl @Inject constructor(
             // Don't send content:// art URIs — they only exist on this phone
             val thumb = song.albumArtUri?.takeIf { it.startsWith("http") } ?: ""
 
+            // A file uploaded just for this share is temporary: every friend's phone saves it,
+            // and the last one to do so deletes it from Supabase (see ShareAutoSaver).
+            var transferId: String? = null
+            if (fileUrl != null && fileSize > 0) {
+                val t = firestore.collection("transfers").document()
+                t.set(mapOf(
+                    "fromUid" to uid, "url" to fileUrl, "pending" to friendUids.distinct(),
+                    "title" to song.title, "createdAt" to System.currentTimeMillis(),
+                )).await()
+                transferId = t.id
+            }
+
             friendUids.forEach { friendUid ->
                 val notifRef = inboxCol(friendUid).document()
                 val notif = mutableMapOf<String, Any>(
@@ -393,6 +408,7 @@ class FriendRepositoryImpl @Inject constructor(
                 fileName?.let { notif["fileName"] = it }
                 mimeType?.let { notif["mimeType"] = it }
                 if (fileSize > 0) notif["fileSize"] = fileSize
+                transferId?.let { notif["transferId"] = it }
                 notifRef.set(notif).await()
             }
             Result.success(Unit)

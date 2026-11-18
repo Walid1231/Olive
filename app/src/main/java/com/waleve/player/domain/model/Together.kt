@@ -68,6 +68,9 @@ data class ListenSession(
     val isPlaying: Boolean = false,
     val positionMs: Long = 0,
     val updatedAt: Long = 0,
+    /** Guests may play / pause / seek / skip and pick songs for everyone. */
+    val openControl: Boolean = false,
+    val startedAt: Long = 0,
 )
 
 /** A playlist several friends edit together. */
@@ -81,3 +84,9 @@ data class CollabPlaylist(
     val tracks: List<RemoteTrack> = emptyList(),
     val updatedAt: Long = 0,
 )
+
+/** One chat line inside a Listen Together session. Kept on each phone (Firestore only relays it). */
+data class ChatMessage(val id: String, val uid: String, val name: String, val text: String, val at: Long)
+
+/** A finished (or running) session's chat, saved on this phone. */
+data class ChatLog(val key: String, val hostName: String, val startedAt: Long, val messages: List<ChatMessage>)

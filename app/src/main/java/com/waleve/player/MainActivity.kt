@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var playbackController: com.waleve.player.service.PlaybackController
 
+    @Inject
+    lateinit var shareAutoSaver: com.waleve.player.data.social.ShareAutoSaver
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestRequiredPermissions()
         together.start()
+        shareAutoSaver.start()
         com.waleve.player.widget.OliveWidget.watch(this, playbackController)
 
         setContent {

@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.waleve.player.data.extractor.MediaExtractor
 import com.waleve.player.data.extractor.MediaFormat
 import com.waleve.player.data.local.dao.SongDao
+import com.waleve.player.data.mapper.toDomain
 import com.waleve.player.domain.model.Friend
 import com.waleve.player.domain.model.FriendRequest
 import com.waleve.player.domain.model.InboxNotification
@@ -64,6 +65,7 @@ class FriendsViewModel @Inject constructor(
     private val streamRepository: com.waleve.player.domain.repository.StreamRepository,
     private val shareNotificationHelper: com.waleve.player.service.ShareNotificationHelper,
     private val supabaseStorage: com.waleve.player.data.remote.SupabaseStorage,
+    private val shareAutoSaver: com.waleve.player.data.social.ShareAutoSaver,
 ) : ViewModel() {
 
     private fun <T> kotlinx.coroutines.flow.Flow<T>.state(initial: T) =
@@ -278,6 +280,11 @@ class FriendsViewModel @Inject constructor(
         }
     }
 
+    // ── Auto-save of shared songs ──
+    val autoSaving: StateFlow<Map<String, Float>> get() = shareAutoSaver.saving
+    val autoSaveEnabled: StateFlow<Boolean> get() = shareAutoSaver.enabled
+    fun setAutoSave(on: Boolean) = shareAutoSaver.setEnabled(on)
+
     fun clearInbox() { viewModelScope.launch { friendRepository.clearInbox(); ok("Inbox cleared") } }
 
     /**
@@ -372,6 +379,10 @@ class FriendsViewModel @Inject constructor(
 
     /** Resolve a shared item into a playable Song (YouTube stream or the uploaded file URL). */
     suspend fun playSharedSong(notif: InboxNotification): com.waleve.player.domain.model.Song? {
+        // Already saved on this phone → play the local copy (the upload may be deleted by now)
+        notif.savedPath?.let { path ->
+            songDao.getSongByPath(path)?.let { markNotificationRead(notif.notifId); return it.toDomain() }
+        }
         notif.fileUrl?.let { fileUrl ->
             markNotificationRead(notif.notifId)
             return com.waleve.player.domain.model.Song(

@@ -51,8 +51,41 @@ service cloud.firestore {
         (
           request.auth.uid in resource.data.invited &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
+        ) ||
+        (
+          // "Everyone can control": guests may only send a command
+          request.auth.uid in resource.data.members &&
+          resource.data.get('openControl', false) == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['command'])
         )
       );
+
+      // Chat relay: messages are stored on the phones; the host deletes these when the session ends
+      match /messages/{msgId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid && (
+          request.auth.uid == hostUid ||
+          request.auth.uid in get(/databases/$(database)/documents/sessions/$(hostUid)).data.invited
+        );
+        allow delete: if signedIn() && request.auth.uid == hostUid;
+      }
+    }
+
+    // Temporary uploads for shared songs: each friend removes themselves after saving it;
+    // the last one (or the sender, after 14 days) deletes it.
+    match /transfers/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
+      allow update: if signedIn() && (
+        request.auth.uid == resource.data.fromUid ||
+        (
+          request.auth.uid in resource.data.pending &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pending']) &&
+          resource.data.pending.toSet().difference(request.resource.data.pending.toSet()).hasOnly([request.auth.uid]) &&
+          request.resource.data.pending.toSet().difference(resource.data.pending.toSet()).size() == 0
+        )
+      );
+      allow delete: if signedIn() && (request.auth.uid == resource.data.fromUid || resource.data.pending.size() == 0);
     }
 
     // Group playlists: every member can read and edit; only the owner deletes.
