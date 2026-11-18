@@ -39,9 +39,18 @@ jobs:
       - name: Decode signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.OLIVE_KEYSTORE_BASE64 }}
+          OLIVE_KEYSTORE_PASSWORD: ${{ secrets.OLIVE_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/olive.jks"
+            # tolerate line breaks / spaces / quotes that sneak in when copying from PowerShell
+            printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n\t"' > "$RUNNER_TEMP/ks.b64"
+            echo "keystore base64 length: $(wc -c < "$RUNNER_TEMP/ks.b64")"
+            if ! base64 -d "$RUNNER_TEMP/ks.b64" > "$RUNNER_TEMP/olive.jks" 2>/dev/null; then
+              echo "::error::OLIVE_KEYSTORE_BASE64 is not valid base64. Re-copy it with the PowerShell command (it should be one long line of letters/numbers ending in = or letters)."
+              exit 1
+            fi
+            echo "keystore bytes: $(wc -c < "$RUNNER_TEMP/olive.jks")"
+            keytool -list -v -keystore "$RUNNER_TEMP/olive.jks" -storepass "$OLIVE_KEYSTORE_PASSWORD" 2>/dev/null | grep -E "Alias name|SHA1" || echo "::warning::could not read keystore with the given password"
             echo "OLIVE_KEYSTORE_PATH=$RUNNER_TEMP/olive.jks" >> "$GITHUB_ENV"
           else
             echo "::warning::No OLIVE_KEYSTORE_BASE64 secret — APK will be debug-signed"
