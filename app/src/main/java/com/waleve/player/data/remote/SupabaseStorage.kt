@@ -12,6 +12,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
 import java.io.File
@@ -119,6 +120,44 @@ class SupabaseStorage @Inject constructor(
     }
 
     /**
+     * Profile picture: shrink to max 512 px JPEG (~50–100 KB) and upload to the public `olive-avatars` bucket.
+     */
+    suspend fun uploadAvatar(imageUri: android.net.Uri, ownerUid: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            if (!isConfigured) return@withContext Result.failure(Exception("Photo upload isn't set up in this build."))
+            val bytes = context.contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
+                ?: return@withContext Result.failure(Exception("Couldn't read that image."))
+            val src = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return@withContext Result.failure(Exception("That file isn't a supported image."))
+            // centre-crop to a square, then scale to 512
+            val side = minOf(src.width, src.height)
+            val square = android.graphics.Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+            val target = minOf(512, side)
+            val scaled = android.graphics.Bitmap.createScaledBitmap(square, target, target, true)
+            val jpeg = java.io.ByteArrayOutputStream().use { out ->
+                scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray()
+            }
+
+            val base = BuildConfig.SUPABASE_URL.trimEnd('/')
+            val objectPath = "avatars/$ownerUid/${System.currentTimeMillis()}.jpg"
+            val request = Request.Builder()
+                .url("$base/storage/v1/object/$AVATAR_BUCKET/$objectPath")
+                .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+                .header("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
+                .post(jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()))
+                .build()
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    return@withContext Result.failure(Exception("Photo upload failed (${resp.code})."))
+                }
+            }
+            Result.success("$base/storage/v1/object/public/$AVATAR_BUCKET/$objectPath")
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "Photo upload failed"))
+        }
+    }
+
+    /**
      * Download a shared file into the app cache (then MediaExtractor.saveToSharedStorage moves it
      * into Music/ or Audiobooks/). @param onProgress 0..100
      */
@@ -188,6 +227,7 @@ class SupabaseStorage @Inject constructor(
     companion object {
         /** Supabase free plan: 50 MB per file. */
         const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
+        const val AVATAR_BUCKET = "olive-avatars"
 
         fun mimeForPath(path: String): String = when (path.substringAfterLast('.', "").lowercase()) {
             "mp3" -> "audio/mpeg"

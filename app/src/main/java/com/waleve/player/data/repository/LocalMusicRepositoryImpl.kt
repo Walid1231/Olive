@@ -165,14 +165,17 @@ class LocalMusicRepositoryImpl @Inject constructor(
                 val duration = cursor.getLong(durationCol)
                 val flaggedSpoken = (audiobookCol >= 0 && cursor.getInt(audiobookCol) == 1) ||
                     (podcastCol >= 0 && cursor.getInt(podcastCol) == 1)
-                val mediaType = if (looksLikeAudiobook(path, duration, flaggedSpoken))
+                val title = cursor.getString(titleCol) ?: "Unknown"
+                val artist = cursor.getString(artistCol) ?: "Unknown Artist"
+                val album = cursor.getString(albumCol) ?: "Unknown Album"
+                val mediaType = if (looksLikeAudiobook(path, duration, flaggedSpoken, "$title $artist $album"))
                     SongEntity.MEDIA_AUDIOBOOK else SongEntity.MEDIA_MUSIC
 
                 songs.add(Scanned(
                     SongEntity(
-                        title = cursor.getString(titleCol) ?: "Unknown",
-                        artist = cursor.getString(artistCol) ?: "Unknown Artist",
-                        album = cursor.getString(albumCol) ?: "Unknown Album",
+                        title = title,
+                        artist = artist,
+                        album = album,
                         albumArtUri = albumArtUri,
                         duration = duration,
                         path = path,
@@ -194,15 +197,32 @@ class LocalMusicRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Decides whether a file is an audiobook (spoken word) or a song.
-     * Order: Android's own flag → .m4b → folder name → very long files outside the Music folder.
+     * Decides whether a file is an audiobook / story (spoken word) or a song.
+     *  1. Android's own audiobook/podcast flag, .m4b files, "Audiobooks"/"Podcasts" folders
+     *  2. Anything 15 min or longer (songs are almost never that long)
+     *  3. Story-ish words in the title/artist/album (golpo, গল্প, suspense, story, episode…) on files ≥ 6 min
      */
-    private fun looksLikeAudiobook(path: String, durationMs: Long, flaggedSpoken: Boolean): Boolean {
+    private fun looksLikeAudiobook(path: String, durationMs: Long, flaggedSpoken: Boolean, tags: String): Boolean {
         if (flaggedSpoken) return true
         val p = path.lowercase()
         if (p.endsWith(".m4b")) return true
         if ("/audiobooks/" in p || "/audiobook/" in p || "audio book" in p || "/podcasts/" in p) return true
-        val inMusicFolder = "/music/" in p
-        return !inMusicFolder && durationMs >= 60 * 60 * 1000L   // ≥ 1 hour and not in Music/
+        val minutes = durationMs / 60_000.0
+        if (minutes >= 15) return true
+        if (minutes >= 6) {
+            val t = tags.lowercase()
+            if (SPOKEN_WORDS.any { it in t }) return true
+        }
+        return false
+    }
+
+    companion object {
+        private val SPOKEN_WORDS = listOf(
+            "audiobook", "audio book", "audio story", "audio drama", "audio golpo",
+            "golpo", "galpo", "goppo", "গল্প", "গপ্প", "কাহিনী", "kahini", "উপন্যাস", "upanyas",
+            "suspense", "সাসপেন্স", "thriller", "horror", "bhuter", "ভূতের", "detective", "goyenda", "গোয়েন্দা",
+            "story", "stories", "episode", "chapter", "অধ্যায়", "part ", "পর্ব", "porbo",
+            "podcast", "radio", "natok", "নাটক", "shruti natok", "শ্রুতি", "kobita path", "আবৃত্তি", "abritti",
+        )
     }
 }

@@ -1,0 +1,44 @@
+rules_version = '2';
+// Olive — Firestore security rules.
+// Paste into Firebase console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // Profiles: any signed-in user can read (needed for friend search by name / email / code).
+    // You can edit your own profile. Others may only add/remove THEMSELVES in your friend list
+    // (that's what accepting / removing a friend does).
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (
+        request.auth.uid == uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount'])
+      );
+      allow delete: if signedIn() && request.auth.uid == uid;
+
+      // Inbox: friend requests + shared songs / audiobooks / playlists.
+      // Anyone signed in can drop a notification in; only the owner reads / marks / deletes.
+      match /inbox/{notifId} {
+        allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
+        allow read, update, delete: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Friend requests between two people
+    match /friendRequests/{reqId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
+      allow update: if signedIn() && request.auth.uid in [resource.data.fromUid, resource.data.toUid];
+      allow delete: if signedIn() && request.auth.uid == resource.data.fromUid;
+    }
+
+    // Shared playlists: readable by any signed-in user who has the link, written by the owner
+    match /sharedPlaylists/{shareId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

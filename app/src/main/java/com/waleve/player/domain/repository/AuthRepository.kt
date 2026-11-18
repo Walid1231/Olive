@@ -25,4 +25,7 @@ interface AuthRepository {
 
     /** Update the current user's profile fields (displayName, bio, favGenre). */
     suspend fun updateProfile(displayName: String? = null, bio: String? = null, favGenre: String? = null): Result<UserProfile>
+
+    /** Upload a new profile picture (picked from the gallery) and save it on the profile. Returns the new URL. */
+    suspend fun updateAvatar(imageUri: android.net.Uri): Result<String>
 }

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,7 +49,12 @@ fun ProfileScreen(
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val isEditing by viewModel.isEditing.collectAsStateWithLifecycle()
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
+    val isUploadingAvatar by viewModel.isUploadingAvatar.collectAsStateWithLifecycle()
+    val avatarOverride by viewModel.avatarOverride.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) viewModel.uploadAvatar(uri) }
 
     // Edit fields
     var editName by remember(profile) { mutableStateOf(profile?.displayName ?: "") }
@@ -106,20 +112,31 @@ fun ProfileScreen(
         ) {
             Spacer(Modifier.height(16.dp))
 
-            // ─── Avatar (generous top spacing so it's never clipped) ────
+            // ─── Avatar — tap to change the profile picture ────
+            val avatar = avatarOverride ?: p.avatarUrl
+            Box(contentAlignment = Alignment.BottomEnd) {
             Box(
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(108.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(listOf(gc.accent, gc.accentLight))
                     )
-                    .border(3.dp, gc.accent.copy(alpha = 0.4f), CircleShape),
+                    .border(3.dp, gc.accent.copy(alpha = 0.4f), CircleShape)
+                    .clickable(enabled = !isUploadingAvatar) {
+                        pickPhoto.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                if (p.avatarUrl != null) {
+                if (isUploadingAvatar) {
+                    androidx.compose.material3.CircularProgressIndicator(color = Color.White, modifier = Modifier.size(36.dp))
+                } else if (avatar != null) {
                     AsyncImage(
-                        model = p.avatarUrl,
+                        model = avatar,
                         contentDescription = "Avatar",
                         modifier = Modifier.fillMaxSize().clip(CircleShape),
                         contentScale = ContentScale.Crop,
@@ -133,6 +150,20 @@ fun ProfileScreen(
                     )
                 }
             }
+                // camera badge
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(gc.accent)
+                        .border(2.dp, gc.surface, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.PhotoCamera, "Change photo", tint = Color.White, modifier = Modifier.size(17.dp))
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Tap the photo to change it", style = MaterialTheme.typography.labelSmall, color = gc.textMuted)
 
             Spacer(Modifier.height(16.dp))
 

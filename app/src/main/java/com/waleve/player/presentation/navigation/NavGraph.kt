@@ -210,6 +210,8 @@ fun NavGraph(
                     isNightMode = isNightMode,
                     onSignInSuccess = {
                         viewModel.refreshAfterSignIn()
+                        // First stop after signing in: set up your profile (name, photo, bio)
+                        navController.navigate(ProfileRoute)
                     },
                 )
             } else {

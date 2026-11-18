@@ -60,6 +60,26 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    private val _isUploadingAvatar = MutableStateFlow(false)
+    val isUploadingAvatar: StateFlow<Boolean> = _isUploadingAvatar.asStateFlow()
+
+    /** Newly uploaded photo, shown right away (Firestore listener may lag a moment). */
+    private val _avatarOverride = MutableStateFlow<String?>(null)
+    val avatarOverride: StateFlow<String?> = _avatarOverride.asStateFlow()
+
+    fun uploadAvatar(uri: android.net.Uri) {
+        _isUploadingAvatar.value = true
+        viewModelScope.launch {
+            authRepository.updateAvatar(uri)
+                .onSuccess { url ->
+                    _avatarOverride.value = url
+                    _events.emit(ProfileUiEvent.Success("Profile picture updated!"))
+                }
+                .onFailure { e -> _events.emit(ProfileUiEvent.Error(e.message ?: "Photo upload failed")) }
+            _isUploadingAvatar.value = false
+        }
+    }
+
     fun signOut() {
         viewModelScope.launch {
             authRepository.signOut()

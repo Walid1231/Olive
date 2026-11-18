@@ -40,13 +40,14 @@ fun AuthScreen(
     val gc = LocalGhibliColors.current
     val isSigningIn by viewModel.isSigningIn.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var errorText by remember { mutableStateOf<String?>(null) }
 
     // Handle events
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is AuthUiEvent.SignInSuccess -> onSignInSuccess()
-                is AuthUiEvent.Error -> { /* snackbar could be shown via host */ }
+                is AuthUiEvent.SignInSuccess -> { errorText = null; onSignInSuccess() }
+                is AuthUiEvent.Error -> errorText = event.message
                 else -> {}
             }
         }
@@ -179,7 +180,11 @@ fun AuthScreen(
             // ─── Bottom: Sign-In button ──────────────────────────────────
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Button(
-                    onClick = { viewModel.signInWithGoogle(context) },
+                    onClick = {
+                        errorText = null
+                        // Credential Manager needs an Activity context, not the application context
+                        viewModel.signInWithGoogle(context.findActivity() ?: context)
+                    },
                     enabled = !isSigningIn,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -215,6 +220,22 @@ fun AuthScreen(
                             color = Color(0xFF1F1F1F),
                         )
                     }
+                }
+
+                errorText?.let { err ->
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "⚠ $err",
+                        fontSize = 13.sp,
+                        color = Color(0xFFFF8A80),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x33FF5252))
+                            .padding(12.dp),
+                    )
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -263,4 +284,15 @@ private fun FeatureRow(
             Text(description, fontSize = 12.sp, color = subtextColor, lineHeight = 16.sp)
         }
     }
+}
+
+
+/** Walks the ContextWrapper chain to the hosting Activity (Credential Manager needs it to show its sheet). */
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var c: android.content.Context? = this
+    while (c is android.content.ContextWrapper) {
+        if (c is android.app.Activity) return c
+        c = c.baseContext
+    }
+    return null
 }

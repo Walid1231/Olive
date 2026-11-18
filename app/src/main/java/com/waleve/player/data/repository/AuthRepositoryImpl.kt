@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -23,6 +24,7 @@ import javax.inject.Singleton
 class AuthRepositoryImpl @Inject constructor(
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
+    private val supabaseStorage: com.waleve.player.data.remote.SupabaseStorage,
 ) : AuthRepository {
 
     companion object {
@@ -77,7 +79,18 @@ class AuthRepositoryImpl @Inject constructor(
                             )
                         }
                     }
-                    .addOnFailureListener { trySend(null) }
+                    .addOnFailureListener { e ->
+                        // Firestore unreachable / blocked: the user IS signed in — don't pretend otherwise
+                        android.util.Log.e("AuthRepository", "Profile read failed", e)
+                        trySend(
+                            UserProfile(
+                                uid = user.uid,
+                                displayName = user.displayName ?: "Unknown",
+                                email = user.email ?: "",
+                                avatarUrl = user.photoUrl?.toString(),
+                            )
+                        )
+                    }
             }
         }
         auth.addAuthStateListener(listener)
@@ -102,39 +115,75 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             val credentialManager = CredentialManager.create(activityContext)
 
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(WEB_CLIENT_ID)
-                .setAutoSelectEnabled(true)
-                .build()
-
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
-                .build()
-
-            val result = credentialManager.getCredential(activityContext, request)
-            val credential = result.credential
-
-            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-            val idToken = googleIdTokenCredential.idToken
+            // 1st choice: the explicit "Sign in with Google" sheet — always shows every Gmail account on the phone.
+            val idToken = try {
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build())
+                    .build()
+                tokenFrom(credentialManager.getCredential(activityContext, request).credential)
+            } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("AuthRepository", "SignInWithGoogle option failed, trying One Tap", e)
+                // Fallback: One Tap account chooser
+                val option = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(WEB_CLIENT_ID)
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+                tokenFrom(credentialManager.getCredential(activityContext, request).credential)
+            }
 
             // Authenticate with Firebase
             val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
             val authResult = auth.signInWithCredential(firebaseCredential).await()
-            val user = authResult.user ?: return Result.failure(Exception("Sign-in returned null user"))
+            val user = authResult.user ?: return Result.failure(Exception("Sign-in returned no user"))
 
-            // Create or update user profile in Firestore
-            val profile = ensureUserProfile(
-                uid = user.uid,
-                displayName = user.displayName ?: "Unknown",
-                email = user.email ?: "",
-                avatarUrl = user.photoUrl?.toString(),
-            )
+            // Create the Firestore profile on first sign-in (keeps a custom name/photo on later sign-ins)
+            val profile = try {
+                ensureUserProfile(
+                    uid = user.uid,
+                    displayName = user.displayName ?: "Unknown",
+                    email = user.email ?: "",
+                    avatarUrl = user.photoUrl?.toString(),
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("AuthRepository", "Signed in, but profile save failed", e)
+                return Result.failure(Exception(friendlyError(e)))
+            }
 
             Result.success(profile)
         } catch (e: Exception) {
             android.util.Log.e("AuthRepository", "Google Sign-In failed", e)
-            Result.failure(e)
+            Result.failure(Exception(friendlyError(e)))
+        }
+    }
+
+    private fun tokenFrom(credential: androidx.credentials.Credential): String {
+        if (credential is androidx.credentials.CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            return GoogleIdTokenCredential.createFrom(credential.data).idToken
+        }
+        throw IllegalStateException("Unexpected credential type: ${credential.type}")
+    }
+
+    /** Turns raw Google / Firebase errors into something a person can act on. */
+    private fun friendlyError(e: Throwable): String {
+        val msg = (e.message ?: "") + " " + (e.cause?.message ?: "")
+        return when {
+            e is androidx.credentials.exceptions.GetCredentialCancellationException -> "Sign-in cancelled."
+            e is androidx.credentials.exceptions.NoCredentialException ->
+                "No Google account found on this phone. Add one in Settings → Accounts, then try again."
+            "[10]" in msg || "DEVELOPER_ERROR" in msg || "Developer console" in msg || "[16]" in msg ->
+                "Google rejected this app's signature. Add this APK's SHA-1 fingerprint in Firebase → Project settings → Your apps."
+            e is com.google.firebase.firestore.FirebaseFirestoreException &&
+                e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "Signed in, but the database blocked access. Update the Firestore security rules (see docs/firestore.rules)."
+            e is com.google.firebase.FirebaseNetworkException || "network" in msg.lowercase() ->
+                "No internet connection."
+            else -> "Sign-in failed: ${e.message ?: e.javaClass.simpleName}"
         }
     }
 
@@ -170,6 +219,17 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateAvatar(imageUri: android.net.Uri): Result<String> {
+        return try {
+            val uid = auth.currentUser?.uid ?: return Result.failure(Exception("Not signed in"))
+            val url = supabaseStorage.uploadAvatar(imageUri, uid).getOrElse { return Result.failure(it) }
+            usersCol.document(uid).set(mapOf("avatarUrl" to url, "customAvatar" to true), SetOptions.merge()).await()
+            Result.success(url)
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyError(e)))
+        }
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /**
@@ -184,13 +244,19 @@ class AuthRepositoryImpl @Inject constructor(
         val doc = usersCol.document(uid).get().await()
 
         if (doc.exists()) {
-            // Update avatar and display name if changed
+            // Keep a name / photo the user set themselves; only fill in what's missing
             val updates = mutableMapOf<String, Any>(
-                "displayName" to displayName,
-                "displayNameLower" to displayName.lowercase(),
-                "email" to email,
+                "uid" to uid,
+                "email" to email.lowercase(),
             )
-            if (avatarUrl != null) updates["avatarUrl"] = avatarUrl
+            if (doc.getString("displayName").isNullOrBlank()) {
+                updates["displayName"] = displayName
+                updates["displayNameLower"] = displayName.lowercase()
+            }
+            if (avatarUrl != null && doc.getBoolean("customAvatar") != true && doc.getString("avatarUrl").isNullOrBlank()) {
+                updates["avatarUrl"] = avatarUrl
+            }
+            if (doc.getString("friendCode").isNullOrBlank()) updates["friendCode"] = generateUniqueFriendCode()
             usersCol.document(uid).set(updates, SetOptions.merge()).await()
 
             return docToProfile(usersCol.document(uid).get().await())
@@ -203,7 +269,7 @@ class AuthRepositoryImpl @Inject constructor(
             "uid" to uid,
             "displayName" to displayName,
             "displayNameLower" to displayName.lowercase(),
-            "email" to email,
+            "email" to email.lowercase(),
             "avatarUrl" to (avatarUrl ?: ""),
             "friendCode" to friendCode,
             "bio" to "",
@@ -249,7 +315,7 @@ class AuthRepositoryImpl @Inject constructor(
             uid = doc.getString("uid") ?: doc.id,
             displayName = doc.getString("displayName") ?: "Unknown",
             email = doc.getString("email") ?: "",
-            avatarUrl = doc.getString("avatarUrl"),
+            avatarUrl = doc.getString("avatarUrl")?.takeIf { it.isNotBlank() },
             friendCode = doc.getString("friendCode") ?: "",
             bio = doc.getString("bio"),
             favGenre = doc.getString("favGenre"),

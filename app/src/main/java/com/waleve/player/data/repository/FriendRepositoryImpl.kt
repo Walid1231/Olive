@@ -35,12 +35,13 @@ class FriendRepositoryImpl @Inject constructor(
 
     // ─── Ensure profile ───────────────────────────────────────────────────────
     override suspend fun ensureUserProfile(uid: String, displayName: String, email: String) {
-        val data = mapOf(
-            "uid"         to uid,
-            "displayName" to displayName,
-            "email"       to email,
-            "displayNameLower" to displayName.lowercase(), // for prefix search
-        )
+        val doc = usersCol.document(uid).get().await()
+        val data = mutableMapOf<String, Any>("uid" to uid, "email" to email.lowercase())
+        // Only fill the name if missing — never overwrite a name the user chose in their profile
+        if (doc.getString("displayName").isNullOrBlank()) {
+            data["displayName"] = displayName
+            data["displayNameLower"] = displayName.lowercase()
+        }
         usersCol.document(uid).set(data, SetOptions.merge()).await()
     }
 
@@ -108,7 +109,7 @@ class FriendRepositoryImpl @Inject constructor(
             uid         = doc.getString("uid") ?: doc.id,
             displayName = doc.getString("displayName") ?: "Unknown",
             email       = doc.getString("email") ?: "",
-            avatarUrl   = doc.getString("avatarUrl"),
+            avatarUrl   = doc.getString("avatarUrl")?.takeIf { it.isNotBlank() },
             friendCode  = doc.getString("friendCode") ?: "",
         )
     }
@@ -219,17 +220,16 @@ class FriendRepositoryImpl @Inject constructor(
                     val friendIds = snap.get("friendIds") as? List<String> ?: emptyList()
                     if (friendIds.isEmpty()) { trySend(emptyList()); return@addSnapshotListener }
 
-                    // Fetch friend profiles (Firestore "in" query max 30 per chunk)
-                    friendIds.chunked(30).forEach { chunk ->
-                        usersCol.whereIn("uid", chunk).get()
-                            .addOnSuccessListener { result ->
-                                val friends = result.documents.mapNotNull { doc ->
-                                    val fUid = doc.getString("uid") ?: return@mapNotNull null
-                                    docToFriend(doc)
-                                }
-
-                                trySend(friends)
-                            }
+                    // Fetch friend profiles by document id (works even if a doc lacks the "uid" field)
+                    val tasks = friendIds.distinct().map { usersCol.document(it).get() }
+                    com.google.android.gms.tasks.Tasks.whenAllComplete(tasks).addOnCompleteListener {
+                        val friends = tasks.mapNotNull { t ->
+                            if (!t.isSuccessful) return@mapNotNull null
+                            val doc = t.result ?: return@mapNotNull null
+                            if (!doc.exists()) return@mapNotNull null
+                            docToFriend(doc)
+                        }
+                        trySend(friends.sortedBy { it.displayName.lowercase() })
                     }
                 }
             awaitClose { listener.remove() }

@@ -1,20 +1,12 @@
-## Olive 1.1.0 🌿
+## Olive 1.1.1 🌿
 
-### New
-- **Audiobooks get their own shelf.** Songs and audiobooks are now kept apart. Each book appears as its own album in **Library → Audiobooks**, and Home has a **Continue listening** row.
-- **Audiobooks remember where you stopped.** Every chapter saves your position and picks up from there next time.
-- **Move between shelves.** Use ⋮ → *Move to Audiobooks* / *Move to Songs* on any track.
-- **Share local songs and audiobooks.** Files on your phone are uploaded (up to 50 MB each) and friends can **play or download** them straight from their Inbox. Online songs are still shared as links.
-- **Download in any format.** MP3 320, M4A, Opus, **FLAC**, WAV and OGG, with a choice to save as Song or Audiobook.
-- **Video downloads.** MP4 from 360p up to 4K (when available), saved to *Movies/Olive* so they show up in your gallery.
-- Search → ⬇ now opens a format picker (Audio / Video tabs).
-- New hand-drawn countryside header with day and night versions. It replaces the old film stills.
-- Warmer colour palette and new quick actions on Home.
+### Songs and audiobooks are properly separated
+- Stories, golpo (গল্প), suspense, radio dramas and anything 15 minutes or longer now go to **Audiobooks**. Shorter tracks stay under **Songs**.
+- You can still move any track by hand with ⋮ → *Move to Audiobooks* / *Move to Songs*.
 
-### Fixed
-- Audiobooks and podcasts were hidden from the library before (only "music" files were scanned).
-- Some video downloads were wrongly saved as audio.
-- Downloads crashed on Android 8–9.
-- Downloaded songs are now matched to their YouTube link and cover art by file path instead of a fuzzy title match.
-- Database upgrade keeps your playlists and favourites. The old app wiped them on every schema change.
-- A crash risk from loading the adaptive launcher icon as an image.
+### Gmail login and profile
+- New sign-in sheet that always lists every Gmail account on the phone.
+- When sign-in fails, the app now tells you why. Before, nothing happened.
+- After signing in you go straight to **My Profile**. Tap the photo to set a **profile picture**, and edit your name and bio.
+- Your custom name and photo are no longer replaced by your Google ones every time you sign in.
+- Fixed the friends list sometimes showing only some of your friends.
