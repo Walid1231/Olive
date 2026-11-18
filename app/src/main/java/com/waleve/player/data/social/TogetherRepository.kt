@@ -183,10 +183,11 @@ class TogetherRepository @Inject constructor(
     /** Active sessions I've been invited to (not my own). */
     fun observeInvites(): Flow<List<ListenSession>> = uidFlow().flatMapLatest { me ->
         if (me == null) flowOf(emptyList()) else callbackFlow {
-            val l = sessions.whereArrayContains("invited", me).whereEqualTo("active", true)
+            // array-contains only (no composite index needed); "active" is checked here
+            val l = sessions.whereArrayContains("invited", me)
                 .addSnapshotListener { snap, _ ->
                     val list = snap?.documents?.mapNotNull(::parseSession)
-                        ?.filter { it.hostUid != me && System.currentTimeMillis() - it.updatedAt < 2 * 3_600_000 }
+                        ?.filter { it.active && it.hostUid != me && System.currentTimeMillis() - it.updatedAt < 2 * 3_600_000 }
                         .orEmpty()
                     trySend(list)
                 }

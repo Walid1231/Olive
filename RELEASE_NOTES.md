@@ -1,25 +1,38 @@
-## Olive 1.2.0 · Light glass ✨
+## Olive 1.3.0 · Together 🎧
 
-### A new look
-- The whole app is redesigned in **light glassmorphism**: a soft pastel background with frosted-glass cards, a floating glass navigation bar and mini player.
-- New **Home**: a greeting with your photo, a search pill, quick chips, a **Continue listening** card for audiobooks, Recently played and Quick picks.
-- New **Library**: a Songs | Audiobooks switch, Favorites and Playlists tiles, and filters (Albums, Artists, Genres, Folders).
-- **Audiobooks** shelf: "Pick up where you left", In progress / Not started / Finished filters, a progress bar on every book, and a ⋮ menu per book (Play from start, Share, Move to Songs, Delete book).
-- New **Now Playing** and **Sign in** screens.
+### Listen together
+- Start a session from **Now Playing → Together** or **Friends → Listen together**, then pick the friends to invite.
+- Everyone hears the same song at the same moment. The host's play, pause, seek and skip happen on every phone.
+- Local songs are sent to friends automatically (up to 50 MB each).
+- Friends get an invite in their Inbox and as a phone notification. A green bar above the mini player shows who's listening.
 
-### Delete
-- ⋮ → **Delete** on any song or chapter, or **Delete book** for a whole audiobook.
-  - **Remove from library**: hides the item in Olive and keeps the file. Use "Show again" to bring it back.
-  - **Delete from phone**: permanently deletes the file. Android asks you to confirm.
-- Deleted items are also taken out of playlists. If the deleted song is playing, playback skips to the next one.
-- Files you delete outside Olive disappear from the library on the next scan.
+### Friends
+- **Friends listening now**: see what your friends are playing. Tap a card to play the song yourself, or to join their session.
+- **Share what I'm listening to** switch, in the Friends tab, if you'd rather keep it private.
+- **Reactions**: send ❤️ 🔥 😂 😢 👏 or a short **Reply** on anything shared with you. The sender sees it in their Inbox.
+- **Group playlists**: make a playlist with friends. Everyone can add songs from their phone, remove their own, and play the whole thing.
 
-### Friends, start to finish
-- Find people by **name, Gmail or friend code**. Each result shows the right button: **Add**, **Requested** (tap to cancel), **Accept** or **Friends ✓**.
-- **Requests** tab: accept or decline what you received, and cancel what you sent.
-- If they had already sent you a request, tapping Add makes you friends straight away, without a duplicate request.
-- When someone accepts your request you get a notice in your **Inbox** (and a phone notification).
-- **Friends** tab: your list of friends; **Remove friend** removes the friendship on both sides.
-- **Inbox**: shared songs, audiobooks and playlists. Play, download (any format) or delete each one; **Mark all read** and **Clear** for the whole inbox.
-- A red badge on the Friends tab and the Home bell shows unread items and pending requests.
-- Copy your friend code or share it with **Invite**. New codes look like `OLV-7K3P`; old `WLEV-` codes still work.
+### Sleep mode
+- Presets from 5 minutes to 2 hours, a **custom** slider (up to 3 h), or **End of track**.
+- **Fade out**: the volume goes down slowly in the last 30 seconds.
+- **Shake for 5 more minutes**, plus **+5 / +15 min** buttons. The notification has **Cancel** and **+5 min** buttons.
+- Open it from Now Playing, the 🌙 button on Home, or the countdown on the mini player.
+
+### Audiobooks
+- **Smart resume**: after a break the book steps back a few seconds (up to 30 s after an hour), so you don't lose the thread.
+- **Every book remembers its own speed**. Music keeps its own speed too.
+
+### Library
+- **Cover art**: songs and audiobooks without artwork get a matching cover from the internet, automatically.
+- WhatsApp voice notes, call recordings, ringtones and tiny clips are no longer counted as songs. You can switch this off in **Library → ⚙ settings**.
+
+### Look and feel
+- **Home-screen widget** in light glass: cover, title, and previous / play-pause / next.
+- New floating **navigation dock**: the selected tab grows into a green pill with its name, with a small vibration on tap.
+- Smooth transitions between tabs and screens.
+- Photo cards now have white text on a dark fade, so it's readable on any cover. Menus are readable again.
+- The album / audiobook page is no longer empty, and it has Play, Shuffle and Delete.
+- Olive now asks for music access inside the app, and shows "Finding songs…" while it scans.
+- Search shows long durations as h:mm:ss.
+
+> **Owner setup:** publish the new Firestore rules (`docs/firestore.rules`) so that Listen Together and Group playlists work.

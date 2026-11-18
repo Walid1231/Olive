@@ -241,48 +241,83 @@ class PlaybackController @Inject constructor(
     fun previous() { mediaController?.seekToPreviousMediaItem() }
     fun seekTo(position: Long) { mediaController?.seekTo(position) }
 
+    private var queueJob: Job? = null
+
+    private fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
+        .setMediaId(id.toString())
+        .setUri(path)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist)
+                .setAlbumTitle(album)
+                .setArtworkUri(albumArtUri?.let { Uri.parse(it) })
+                .build()
+        )
+        .build()
+
+    /** ytm://stream/<videoId> → real stream URL. Null when the stream can't be found. */
+    private suspend fun resolveStream(song: Song): Song? {
+        if (!song.path.startsWith("ytm://stream/")) return song
+        val videoId = song.path.substringAfter("ytm://stream/")
+        return withContext(Dispatchers.IO) {
+            runCatching { streamRepository.getStreamUrl(videoId) }.getOrNull()?.let { song.copy(path = it) }
+        }
+    }
+
     fun setQueue(songs: List<Song>, startIndex: Int = 0, startPositionMs: Long? = null, playWhenReady: Boolean = true) {
         saveBookmark(force = true)   // remember the audiobook we're leaving
+        queueJob?.cancel()           // a newer queue always wins
         songMap.clear()
         currentQueue = songs
+        if (songs.isEmpty()) return
+        val start = startIndex.coerceIn(0, songs.lastIndex)
 
-        scope.launch {
-            // Resolve any ytm://stream/<videoId> pseudo-paths to real stream URLs
-            val resolvedSongs = withContext(Dispatchers.IO) {
-                songs.map { song ->
-                    if (song.path.startsWith("ytm://stream/")) {
-                        val videoId = song.path.substringAfter("ytm://stream/")
-                        try {
-                            val streamUrl = streamRepository.getStreamUrl(videoId)
-                            if (streamUrl != null) song.copy(path = streamUrl) else song
-                        } catch (_: Exception) { song }
-                    } else {
-                        song
-                    }
-                }
+        queueJob = scope.launch {
+            if (songs.none { it.path.startsWith("ytm://stream/") }) {
+                // Everything is already playable (local files / direct URLs)
+                songs.forEach { songMap[it.id.toString()] = it }
+                val startPos = startPositionMs ?: savedPosition(songs[start])
+                mediaController?.setMediaItems(songs.map { it.toMediaItem() }, start, startPos)
+                mediaController?.prepare()
+                if (playWhenReady) mediaController?.play() else mediaController?.pause()
+                return@launch
             }
 
-            resolvedSongs.forEach { song -> songMap[song.id.toString()] = song }
-            currentQueue = resolvedSongs
-
-            val mediaItems = resolvedSongs.map { song ->
-                MediaItem.Builder()
-                    .setMediaId(song.id.toString())
-                    .setUri(song.path)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(song.title)
-                            .setArtist(song.artist)
-                            .setAlbumTitle(song.album)
-                            .setArtworkUri(song.albumArtUri?.let { Uri.parse(it) })
-                            .build()
-                    )
-                    .build()
+            // Online queue: start the chosen song right away, resolve the others in the background
+            var firstIdx = start
+            var first: Song? = null
+            while (firstIdx < songs.size && first == null) {
+                first = resolveStream(songs[firstIdx])
+                if (first == null) firstIdx++
             }
-            val startPos = startPositionMs ?: savedPosition(resolvedSongs.getOrNull(startIndex))
-            mediaController?.setMediaItems(mediaItems, startIndex, startPos)
+            if (first == null) return@launch
+            val ordered = mutableListOf(first)
+            songMap[first.id.toString()] = first
+            currentQueue = ordered.toList()
+            val startPos = startPositionMs ?: savedPosition(first)
+            mediaController?.setMediaItems(listOf(first.toMediaItem()), 0, startPos)
             mediaController?.prepare()
             if (playWhenReady) mediaController?.play() else mediaController?.pause()
+
+            for (i in firstIdx + 1 until songs.size) {
+                val r = resolveStream(songs[i]) ?: continue
+                songMap[r.id.toString()] = r
+                mediaController?.addMediaItem(r.toMediaItem())
+                ordered.add(r)
+                currentQueue = ordered.toList()
+                updateState()
+            }
+            var insertAt = 0
+            for (i in 0 until start) {
+                val r = resolveStream(songs[i]) ?: continue
+                songMap[r.id.toString()] = r
+                mediaController?.addMediaItem(insertAt, r.toMediaItem())
+                ordered.add(insertAt, r)
+                insertAt++
+                currentQueue = ordered.toList()
+                updateState()
+            }
         }
     }
 
