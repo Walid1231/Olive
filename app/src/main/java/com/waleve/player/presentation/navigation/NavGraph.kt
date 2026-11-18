@@ -58,6 +58,20 @@ fun NavGraph(
         navController = navController,
         startDestination = HomeRoute,
         modifier = modifier,
+        // Smooth, light transitions between tabs and screens
+        enterTransition = {
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260, delayMillis = 40)) +
+                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(260, delayMillis = 40), initialScale = 0.97f)
+        },
+        exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)) },
+        popEnterTransition = {
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260, delayMillis = 40)) +
+                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(260, delayMillis = 40), initialScale = 1.03f)
+        },
+        popExitTransition = {
+            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)) +
+                androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(160), targetScale = 0.97f)
+        },
     ) {
         composable<HomeRoute> {
             val viewModel: HomeViewModel = hiltViewModel()

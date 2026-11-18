@@ -52,6 +52,7 @@ import com.waleve.player.presentation.components.GlassIconButton
 import com.waleve.player.presentation.components.GlassProgress
 import com.waleve.player.presentation.components.GradientButton
 import com.waleve.player.presentation.components.Overline
+import com.waleve.player.presentation.components.PhotoCard
 import com.waleve.player.presentation.components.SectionHeader
 import com.waleve.player.presentation.components.SongListItem
 import com.waleve.player.presentation.components.glass
@@ -133,6 +134,20 @@ fun HomeScreen(
                 Text("Search songs, audiobooks, artists…", color = GlassMuted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
         }
+        // ── Music access (shown only until granted) ──
+        item { com.waleve.player.presentation.components.StoragePermissionCard(onGranted = viewModel::scanMusic) }
+        if (isScanning && songCount == 0) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp), alpha = 0.7f).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = GlassAccent, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Finding songs and audiobooks on your phone…", color = GlassInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+            }
+        }
         // ── Chips ──
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -170,16 +185,12 @@ fun HomeScreen(
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(recentlyPlayed.take(12), key = { "r_${it.id}" }) { song ->
-                        Column(
-                            Modifier.width(118.dp).glass(RoundedCornerShape(20.dp), alpha = 0.6f)
-                                .clickable { onSongClick(recentlyPlayed, recentlyPlayed.indexOf(song)) }
-                                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
-                        ) {
-                            Artwork(song.albumArtUri, Modifier.fillMaxWidth().aspectRatio(1f), seed = song.title.hashCode())
-                            Spacer(Modifier.height(8.dp))
-                            Text(song.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(song.artist, color = GlassSub, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                        PhotoCard(
+                            model = song.albumArtUri, title = song.title, subtitle = song.artist,
+                            seed = song.title.hashCode(),
+                            onClick = { onSongClick(recentlyPlayed, recentlyPlayed.indexOf(song)) },
+                            modifier = Modifier.width(132.dp).aspectRatio(0.8f),
+                        )
                     }
                 }
             }

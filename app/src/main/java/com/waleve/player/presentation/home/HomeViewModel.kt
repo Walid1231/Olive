@@ -65,6 +65,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun scanMusic() {
+        if (_isScanning.value) return
         viewModelScope.launch {
             _isScanning.value = true
             try {

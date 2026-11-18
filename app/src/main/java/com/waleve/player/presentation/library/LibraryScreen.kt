@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.library
 
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,6 +21,7 @@ import com.waleve.player.presentation.components.GlassIconButton
 import com.waleve.player.presentation.components.GlassProgress
 import com.waleve.player.presentation.components.GlassSegmented
 import com.waleve.player.presentation.components.Overline
+import com.waleve.player.presentation.components.PhotoCard
 import com.waleve.player.presentation.components.SegmentOption
 import com.waleve.player.presentation.components.glass
 import com.waleve.player.presentation.theme.GlassAccent
@@ -224,14 +226,30 @@ fun LibraryScreen(
             )
         }
 
-        // ── Content ──
-        when (selectedTab) {
+        com.waleve.player.presentation.components.StoragePermissionCard(
+            onGranted = viewModel::rescan,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+        )
+
+        // ── Content (cross-fades when switching tabs) ──
+        androidx.compose.animation.AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(240)) +
+                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { w -> if (targetState > initialState) w / 12 else -w / 12 }) togetherWith
+                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+            },
+            label = "libraryTab",
+            modifier = Modifier.weight(1f),
+        ) { tabIndex ->
+        when (tabIndex) {
             0 -> SongsTab(songs, onSongClick, viewModel, accentColor, textPrimary, textMuted, currentPlayingSongId, playlistViewModel)
             1 -> AudiobooksTab(audiobookAlbums, audiobooks, onAlbumClick, onSongClick, viewModel, textPrimary, textMuted, currentPlayingSongId)
             2 -> AlbumsTab(albums, onAlbumClick)
             3 -> ArtistsTab(artists, onArtistClick)
             4 -> GenresTab(genres, onGenreClick, textPrimary)
             5 -> FoldersTab(folders, onFolderClick, textPrimary)
+        }
         }
     }
 }
@@ -502,55 +520,11 @@ private fun SongGridCard(
     accentColor: Color,
     onClick: () -> Unit,
 ) {
-    val gc = LocalGhibliColors.current
-    val cardBg by animateColorAsState(
-        targetValue = gc.surfaceCard, animationSpec = tween(800), label = "gridCardBg",
+    PhotoCard(
+        model = song.albumArtUri, title = song.title, subtitle = song.artist,
+        seed = song.title.hashCode(), onClick = onClick,
+        modifier = Modifier.fillMaxWidth().aspectRatio(0.9f),
     )
-    val textCol by animateColorAsState(
-        targetValue = gc.textPrimary, animationSpec = tween(800), label = "gridCardText",
-    )
-    val subCol by animateColorAsState(
-        targetValue = gc.textMuted, animationSpec = tween(800), label = "gridCardSub",
-    )
-
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(cardBg)
-            .clickable(onClick = onClick),
-    ) {
-        AsyncImage(
-            model = song.albumArtUri,
-            contentDescription = song.title,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(130.dp)
-                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-                .background(accentColor.copy(alpha = 0.15f)),
-            contentScale = ContentScale.Crop,
-        )
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.labelMedium,
-                color = textCol,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    velocity = 40.dp,
-                ),
-            )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.labelSmall,
-                color = subCol,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
 }
 
 // ── Audiobooks Tab ────────────────────────────────────────────────────────────
@@ -645,34 +619,31 @@ private fun AudiobooksTab(
             val chapters = chaptersOf(book)
             val p = progressOf(book)
             var menu by remember { mutableStateOf(false) }
-            Column(
-                Modifier.glass(RoundedCornerShape(22.dp)).clickable { onBookClick(book.name, book.artist) }.padding(10.dp),
-            ) {
-                Box {
-                    Artwork(book.artUri, Modifier.fillMaxWidth().aspectRatio(1f), corner = 16.dp, seed = book.name.hashCode())
-                    Box(Modifier.align(Alignment.TopEnd)) {
-                        Box(
-                            Modifier.padding(6.dp).size(30.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f)).clickable { menu = true },
-                            contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Filled.MoreVert, "Book options", tint = GlassInk, modifier = Modifier.size(18.dp)) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
-                            DropdownMenuItem(text = { Text("Play from start") }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null, tint = GlassAccent) },
-                                onClick = { menu = false; if (chapters.isNotEmpty()) onSongClick(chapters, 0) })
-                            DropdownMenuItem(text = { Text("Share with friend") }, leadingIcon = { Icon(Icons.Filled.Share, null, tint = GlassAccent) },
-                                onClick = { menu = false; chapters.firstOrNull()?.let { bookToShare = it } })
-                            DropdownMenuItem(text = { Text("Move to Songs") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = GlassAccent) },
-                                onClick = { menu = false; chapters.forEach { viewModel.toggleAudiobook(it) } })
-                            DropdownMenuItem(text = { Text("Delete book", color = GlassDanger) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = GlassDanger) },
-                                onClick = { menu = false; deleteSongs(chapters) })
-                        }
+            PhotoCard(
+                model = book.artUri,
+                title = book.name.ifBlank { "Untitled" },
+                subtitle = "${chapters.size} chapter${if (chapters.size == 1) "" else "s"} · ${formatHours(chapters.sumOf { it.duration })}",
+                progress = p,
+                seed = book.name.hashCode(),
+                onClick = { onBookClick(book.name, book.artist) },
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.78f),
+                topEnd = {
+                    Box(
+                        Modifier.padding(8.dp).size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).clickable { menu = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.MoreVert, "Book options", tint = Color.White, modifier = Modifier.size(18.dp)) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
+                        DropdownMenuItem(text = { Text("Play from start", color = GlassInk) }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null, tint = GlassAccent) },
+                            onClick = { menu = false; if (chapters.isNotEmpty()) onSongClick(chapters, 0) })
+                        DropdownMenuItem(text = { Text("Share with friend", color = GlassInk) }, leadingIcon = { Icon(Icons.Filled.Share, null, tint = GlassAccent) },
+                            onClick = { menu = false; chapters.firstOrNull()?.let { bookToShare = it } })
+                        DropdownMenuItem(text = { Text("Move to Songs", color = GlassInk) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = GlassAccent) },
+                            onClick = { menu = false; chapters.forEach { viewModel.toggleAudiobook(it) } })
+                        DropdownMenuItem(text = { Text("Delete book", color = GlassDanger) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = GlassDanger) },
+                            onClick = { menu = false; deleteSongs(chapters) })
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(book.name.ifBlank { "Untitled" }, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${chapters.size} chapter${if (chapters.size == 1) "" else "s"} · ${formatHours(chapters.sumOf { it.duration })}", color = GlassSub, fontSize = 11.5.sp, maxLines = 1)
-                Spacer(Modifier.height(6.dp))
-                GlassProgress(p, height = 4.dp)
-            }
+                },
+            )
         }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             Text("All chapters", style = MaterialTheme.typography.titleSmall, color = textPrimary, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
@@ -706,9 +677,9 @@ private fun AlbumsTab(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(albums, key = { "${it.name}_${it.artist}" }) { album ->
             AlbumCard(album = album, onClick = { onAlbumClick(album.name, album.artist) })

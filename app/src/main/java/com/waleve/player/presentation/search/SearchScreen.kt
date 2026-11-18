@@ -133,19 +133,13 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .shadow(
-                        elevation = if (isSearchBarFocused) 12.dp else 4.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        ambientColor = gc.accent.copy(alpha = 0.15f),
-                        spotColor   = gc.accent.copy(alpha = 0.10f),
-                    )
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(gc.surfaceCard)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.White.copy(alpha = 0.78f))
                     .border(
                         width = if (isSearchBarFocused) 1.5.dp else 1.dp,
                         color  = if (isSearchBarFocused) gc.accent.copy(alpha = 0.55f)
-                                 else gc.textMuted.copy(alpha = 0.20f),
-                        shape  = RoundedCornerShape(16.dp),
+                                 else Color.White,
+                        shape  = RoundedCornerShape(22.dp),
                     ),
             ) {
                 TextField(
@@ -359,10 +353,9 @@ private fun SearchResultCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 3.dp, shape = RoundedCornerShape(14.dp), ambientColor = accent.copy(alpha = 0.08f))
-            .clip(RoundedCornerShape(14.dp))
-            .background(gc.surfaceCard)
-            .border(1.dp, if (isStreaming) accent.copy(alpha = 0.40f) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.72f))
+            .border(1.dp, if (isStreaming) accent.copy(alpha = 0.5f) else Color.White, RoundedCornerShape(20.dp))
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -538,7 +531,8 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 private fun formatDuration(seconds: Long): String {
-    val mins = seconds / 60
-    val secs = seconds % 60
-    return "%d:%02d".format(mins, secs)
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -101,7 +102,7 @@ fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
 fun Modifier.glass(
     shape: Shape = RoundedCornerShape(22.dp),
     alpha: Float = 0.62f,
-    elevation: Dp = 6.dp,
+    elevation: Dp = 0.dp,
     border: Boolean = true,
 ): Modifier = this
     .then(if (elevation > 0.dp) Modifier.shadow(elevation, shape, ambientColor = Color(0x1423305A), spotColor = Color(0x1423305A)) else Modifier)
@@ -327,4 +328,52 @@ fun Artwork(model: Any?, modifier: Modifier = Modifier, corner: Dp = 14.dp, seed
 @Composable
 fun Overline(text: String, color: Color = GlassAccent) {
     Text(text.uppercase(), color = color, fontWeight = FontWeight.ExtraBold, fontSize = 10.5.sp, letterSpacing = 1.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+
+/**
+ * Photo card: artwork fills the card, a dark gradient rises from the bottom and the text sits on it
+ * in WHITE — readable on any cover (bright, dark or busy).
+ */
+@Composable
+fun PhotoCard(
+    model: Any?,
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+    seed: Int = title.hashCode(),
+    corner: Dp = 20.dp,
+    progress: Float? = null,
+    onClick: (() -> Unit)? = null,
+    topEnd: (@Composable BoxScope.() -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(corner))
+            .border(1.dp, GlassStroke, RoundedCornerShape(corner))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+    ) {
+        Artwork(model, Modifier.fillMaxSize(), corner = 0.dp, seed = seed)
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.62f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f), Color.Black.copy(alpha = 0.82f))))
+        )
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 11.dp)) {
+            Text(
+                title, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 2,
+                overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
+                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 1f), 4f)),
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(subtitle, color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (progress != null) {
+                Spacer(Modifier.height(7.dp))
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.3f))) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                }
+            }
+        }
+        topEnd?.let { Box(Modifier.align(Alignment.TopEnd)) { it() } }
+    }
 }

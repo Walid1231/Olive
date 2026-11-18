@@ -26,15 +26,9 @@ class MainActivity : ComponentActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions -> 
-        // If at least one relevant permission is granted, trigger a scan
-        if (permissions.values.any { it }) {
-            lifecycleScope.launch {
-                try {
-                    scanMusicUseCase()
-                } catch (_: Exception) {}
-            }
-        }
+    ) { _ ->
+        // Nothing to do here: the Home / Library screens re-check access on resume
+        // and start a scan (with a visible progress row) as soon as it is granted.
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

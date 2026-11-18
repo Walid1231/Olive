@@ -133,6 +133,13 @@ class LibraryViewModel @Inject constructor(
     val hiddenCount: StateFlow<Int> = localMusicRepository.hiddenCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    /** Every song / chapter of one album or audiobook (both media types). */
+    fun albumSongs(album: String, artist: String): kotlinx.coroutines.flow.Flow<List<Song>> =
+        localMusicRepository.getSongsByAlbum(album, artist)
+            .map { list -> list.sortedWith(compareBy<Song>({ it.trackNumber ?: Int.MAX_VALUE }, { it.title.lowercase() })) }
+
+    fun rescan() { viewModelScope.launch { runCatching { localMusicRepository.scanMusic() } } }
+
     fun restoreHidden() { viewModelScope.launch { localMusicRepository.restoreHidden() } }
 
     fun selectTab(index: Int) { _selectedTab.value = index }
