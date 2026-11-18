@@ -18,4 +18,5 @@ import kotlinx.serialization.Serializable
 @Serializable data class SharedPlaylistRoute(val shareId: String)
 @Serializable object AuthRoute
 @Serializable object ProfileRoute
-
+@Serializable object GroupPlaylistsRoute
+@Serializable data class GroupPlaylistRoute(val id: String)

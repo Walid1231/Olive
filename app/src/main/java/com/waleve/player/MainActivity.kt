@@ -24,6 +24,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var scanMusicUseCase: ScanMusicUseCase
 
+    @Inject
+    lateinit var together: com.waleve.player.data.social.TogetherRepository
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -35,6 +38,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestRequiredPermissions()
+        together.start()
 
         setContent {
             WaLeveAppContent()

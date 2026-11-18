@@ -41,6 +41,9 @@ interface FriendRepository {
     /** Delete every inbox item (friend-request notices are handled by the Requests tab). */
     suspend fun clearInbox()
 
+    /** React to (and/or reply to) a song someone shared with me. The sender gets a REACTION notice. */
+    suspend fun reactToShare(notif: InboxNotification, emoji: String?, message: String?): Result<Unit>
+
     suspend fun getOutgoingRequests(): List<FriendRequest>
 
     suspend fun shareSong(

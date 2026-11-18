@@ -257,6 +257,9 @@ class FriendRepositoryImpl @Inject constructor(
                             "FRIEND_ACCEPTED" -> InboxNotificationType.FRIEND_ACCEPTED
                             "PLAYLIST_SHARED" -> InboxNotificationType.PLAYLIST_SHARED
                             "SONG_SHARED"     -> InboxNotificationType.SONG_SHARED
+                            "LISTEN_INVITE"   -> InboxNotificationType.LISTEN_INVITE
+                            "COLLAB_INVITE"   -> InboxNotificationType.COLLAB_INVITE
+                            "REACTION"        -> InboxNotificationType.REACTION
                             else              -> return@mapNotNull null
                         }
                         InboxNotification(
@@ -280,6 +283,9 @@ class FriendRepositoryImpl @Inject constructor(
                             fileName     = doc.getString("fileName"),
                             mimeType     = doc.getString("mimeType"),
                             fileSize     = doc.getLong("fileSize") ?: 0L,
+                            reaction     = doc.getString("reaction"),
+                            message      = doc.getString("message")?.takeIf { it.isNotBlank() },
+                            myReaction   = doc.getString("myReaction"),
                         )
                     }
                     trySend(items)
@@ -393,6 +399,24 @@ class FriendRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    // ─── Reactions / replies to a shared song ────────────────────────────────
+    override suspend fun reactToShare(notif: InboxNotification, emoji: String?, message: String?): Result<Unit> = runCatching {
+        val uid = currentUid ?: error("Please sign in first")
+        val me = usersCol.document(uid).get().await()
+        if (emoji != null) inboxCol(uid).document(notif.notifId).update("myReaction", emoji).await()
+        val ref = inboxCol(notif.fromUid).document()
+        val data = mutableMapOf<String, Any>(
+            "notifId" to ref.id, "type" to "REACTION", "fromUid" to uid,
+            "fromName" to (me.getString("displayName") ?: "Someone"), "fromAvatar" to (me.getString("avatarUrl") ?: ""),
+            "songTitle" to (notif.songTitle ?: notif.playlistName ?: "your share"),
+            "sentAt" to System.currentTimeMillis(), "isRead" to false,
+        )
+        emoji?.let { data["reaction"] = it }
+        message?.trim()?.take(200)?.takeIf { it.isNotEmpty() }?.let { data["message"] = it }
+        notif.thumbnailUrl?.let { data["thumbnailUrl"] = it }
+        ref.set(data).await()
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

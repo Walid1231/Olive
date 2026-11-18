@@ -98,10 +98,14 @@ data class InboxNotification(
     val fileName: String? = null,
     val mimeType: String? = null,
     val fileSize: Long = 0,
+    // ── v1.3: reactions + replies, and what I reacted with ──
+    val reaction: String? = null,        // set for REACTION (emoji)
+    val message: String? = null,         // optional short reply text
+    val myReaction: String? = null,      // my reaction to this SONG_SHARED item
 ) {
     val isAudiobook: Boolean get() = mediaType == "audiobook"
     /** Can be played / downloaded: either a YouTube id or an uploaded file. */
     val isDownloadable: Boolean get() = videoId != null || fileUrl != null
 }
 
-enum class InboxNotificationType { FRIEND_REQUEST, FRIEND_ACCEPTED, PLAYLIST_SHARED, SONG_SHARED }
+enum class InboxNotificationType { FRIEND_REQUEST, FRIEND_ACCEPTED, PLAYLIST_SHARED, SONG_SHARED, LISTEN_INVITE, COLLAB_INVITE, REACTION }

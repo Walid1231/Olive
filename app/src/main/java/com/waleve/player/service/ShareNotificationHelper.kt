@@ -71,6 +71,21 @@ class ShareNotificationHelper @Inject constructor(
                 "Open Olive → Friends → Requests to accept",
                 "req_${notification.notifId}".hashCode(),
             )
+            InboxNotificationType.LISTEN_INVITE -> Triple(
+                "🎧 ${notification.fromName} invited you to listen together",
+                "Open Olive → Friends to join",
+                "listen_${notification.notifId}".hashCode(),
+            )
+            InboxNotificationType.COLLAB_INVITE -> Triple(
+                "🤝 ${notification.fromName} added you to a group playlist",
+                notification.playlistName ?: "Add your songs",
+                "collab_${notification.notifId}".hashCode(),
+            )
+            InboxNotificationType.REACTION -> Triple(
+                "${notification.reaction ?: "💬"} ${notification.fromName} replied",
+                notification.message ?: "Reacted to “${notification.songTitle ?: "your share"}”",
+                "react_${notification.notifId}".hashCode(),
+            )
             InboxNotificationType.FRIEND_ACCEPTED -> Triple(
                 "🎉 ${notification.fromName} accepted your request",
                 "You can share songs and audiobooks now",

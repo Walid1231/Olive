@@ -8,6 +8,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,6 +71,9 @@ fun WaLeveAppContent() {
             bottomBar = {
                 if (showBottomBar) {
                     Column(modifier = Modifier.navigationBarsPadding()) {
+                        var togetherSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                        com.waleve.player.presentation.together.TogetherBanner(onClick = { togetherSheet = true })
+                        if (togetherSheet) com.waleve.player.presentation.together.ListenTogetherSheet(onDismiss = { togetherSheet = false })
                         MiniPlayer(
                             playerState = playerState,
                             onPlayPause = playerViewModel::playPause,

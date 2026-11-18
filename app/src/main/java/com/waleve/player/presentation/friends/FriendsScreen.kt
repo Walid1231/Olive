@@ -11,6 +11,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import com.waleve.player.presentation.components.GlassGradient
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -115,8 +122,40 @@ fun FriendsScreen(
     onPlaySharedSong: (InboxNotification) -> Unit = {},
     onOpenProfile: () -> Unit = {},
     myProfile: UserProfile? = null,
+    onOpenGroupPlaylists: () -> Unit = {},
+    onOpenGroupPlaylist: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val togetherVm: com.waleve.player.presentation.together.TogetherViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val activity by togetherVm.activity.collectAsStateWithLifecycle()
+    val invites by togetherVm.invites.collectAsStateWithLifecycle()
+    val shareActivity by togetherVm.shareActivity.collectAsStateWithLifecycle()
+    var showTogether by remember { mutableStateOf(false) }
+    var replyTo by remember { mutableStateOf<InboxNotification?>(null) }
+    com.waleve.player.presentation.together.TogetherToasts(togetherVm)
+    if (showTogether) com.waleve.player.presentation.together.ListenTogetherSheet(onDismiss = { showTogether = false }, vm = togetherVm)
+    replyTo?.let { n ->
+        var text by remember(n.notifId) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { replyTo = null },
+            containerColor = Color.White,
+            title = { Text("Reply to ${n.fromName}", fontWeight = FontWeight.ExtraBold, color = GlassInk) },
+            text = {
+                Column {
+                    Text("About “${n.songTitle ?: n.playlistName ?: "your share"}”", color = GlassSub, fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = text, onValueChange = { if (it.length <= 200) text = it },
+                        placeholder = { Text("Loved this one!", color = GlassMuted) },
+                        textStyle = TextStyle(color = GlassInk, fontSize = 15.sp), maxLines = 4,
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = GlassAccent, cursorColor = GlassAccent),
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.react(n, null, text); replyTo = null }, enabled = text.isNotBlank()) { Text("Send", color = GlassAccent, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { replyTo = null }) { Text("Cancel", color = GlassSub) } },
+        )
+    }
     val friends by viewModel.friends.collectAsStateWithLifecycle()
     val inbox by viewModel.inbox.collectAsStateWithLifecycle()
     val incoming by viewModel.incomingRequests.collectAsStateWithLifecycle()
@@ -189,6 +228,56 @@ fun FriendsScreen(
                 GradientButton("Invite", { shareCode(context, code) }, icon = Icons.Rounded.Share, height = 38.dp, enabled = code.isNotBlank())
             }
         }
+        // ── Together: Listen together + Group playlists ──
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TogetherTile(
+                    Icons.Rounded.Headphones, "Listen together",
+                    if (invites.isNotEmpty()) "${invites.size} invite${if (invites.size == 1) "" else "s"} waiting" else "Sync with friends",
+                    highlight = invites.isNotEmpty(), onClick = { showTogether = true }, modifier = Modifier.weight(1f),
+                )
+                TogetherTile(
+                    Icons.AutoMirrored.Rounded.PlaylistPlay, "Group playlists", "Build one together",
+                    onClick = onOpenGroupPlaylists, modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        // ── Friends listening right now ──
+        val live = friends.mapNotNull { f -> activity[f.uid]?.let { f to it } }.sortedByDescending { it.second.isPlaying }
+        if (live.isNotEmpty() && query.trim().length < 2) {
+            item {
+                Column {
+                    Overline("Friends listening now", GlassSub)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        live.forEach { (f, np) ->
+                            val inv = invites.firstOrNull { it.hostUid == f.uid }
+                            Column(
+                                Modifier.width(150.dp).glass(RoundedCornerShape(20.dp), alpha = 0.8f)
+                                    .clickable { if (inv != null) togetherVm.join(f.uid) else togetherVm.playFriend(np) }
+                                    .padding(10.dp),
+                            ) {
+                                Box {
+                                    Artwork(np.track.artUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp, seed = np.track.title.hashCode())
+                                    Avatar(f.avatarUrl, f.displayName, 30.dp, Modifier.align(Alignment.BottomStart).offset(x = 6.dp, y = (-6).dp))
+                                    if (np.isPlaying) Box(
+                                        Modifier.align(Alignment.TopEnd).padding(6.dp).clip(RoundedCornerShape(8.dp)).background(GlassAccent).padding(horizontal = 6.dp, vertical = 2.dp),
+                                    ) { Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(np.track.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f.displayName.substringBefore(' '), color = GlassSub, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    when { inv != null -> "Tap to join"; np.track.playable -> "Tap to play"; else -> "On their phone" },
+                                    color = if (inv != null || np.track.playable) GlassAccent else GlassMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // ── Search people ──
         item {
             Row(
@@ -250,16 +339,27 @@ fun FriendsScreen(
                         when (n.type) {
                             InboxNotificationType.PLAYLIST_SHARED -> n.shareId?.let(onOpenSharedPlaylist)
                             InboxNotificationType.FRIEND_ACCEPTED -> tab = 1
+                            InboxNotificationType.LISTEN_INVITE -> showTogether = true
+                            InboxNotificationType.COLLAB_INVITE -> n.shareId?.let(onOpenGroupPlaylist)
                             else -> {}
                         }
                     },
+                    onJoin = { n -> viewModel.markNotificationRead(n.notifId); n.shareId?.let { togetherVm.join(it) } },
+                    liveHosts = invites.map { it.hostUid }.toSet(),
+                    onReact = { n, e -> viewModel.markNotificationRead(n.notifId); viewModel.react(n, e) },
+                    onReply = { n -> replyTo = n },
                     onPlay = { n -> viewModel.markNotificationRead(n.notifId); onPlaySharedSong(n) },
                     onDownload = { n -> viewModel.markNotificationRead(n.notifId); if (n.fileUrl != null) viewModel.downloadSharedSong(n) else formatSheetFor = n },
                     onDelete = { n -> viewModel.deleteNotification(n.notifId) },
                     onMarkAll = viewModel::markAllRead,
                     onClear = viewModel::clearInbox,
                 )
-                1 -> friendsTab(friends, busy, onRemove = { confirmRemove = it })
+                1 -> friendsTab(
+                    friends, busy, activity, shareActivity,
+                    onShareActivity = togetherVm::setShareActivity,
+                    onPlay = { togetherVm.playFriend(it) },
+                    onRemove = { confirmRemove = it },
+                )
                 else -> requestsTab(incoming, outgoing, busy, viewModel::acceptRequest, viewModel::declineRequest) { r -> viewModel.cancelRequest(r.requestId, r.toName) }
             }
         }
@@ -278,6 +378,10 @@ private fun LazyListScope.inboxTab(
     onDelete: (InboxNotification) -> Unit,
     onMarkAll: () -> Unit,
     onClear: () -> Unit,
+    onJoin: (InboxNotification) -> Unit,
+    liveHosts: Set<String>,
+    onReact: (InboxNotification, String) -> Unit,
+    onReply: (InboxNotification) -> Unit,
 ) {
     if (inbox.isEmpty()) {
         item { EmptyNote(Icons.Rounded.Inbox, "Your inbox is empty", "Songs, audiobooks and playlists your friends share will show up here.") }
@@ -312,6 +416,45 @@ private fun LazyListScope.inboxTab(
                 InboxNotificationType.FRIEND_ACCEPTED -> {
                     Spacer(Modifier.height(4.dp))
                     Text("You're friends now — share something with ${n.fromName.substringBefore(' ')}!", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+                InboxNotificationType.LISTEN_INVITE -> {
+                    Spacer(Modifier.height(10.dp))
+                    val live = n.fromUid in liveHosts
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(GlassGradient), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Headphones, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Listen together", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                            Text(if (live) (n.songTitle?.let { "Now: $it" } ?: "Session is live") else "This session has ended", color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (live) GradientButton("Join", { onJoin(n) }, height = 38.dp)
+                    }
+                }
+                InboxNotificationType.COLLAB_INVITE -> {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF7B6CF0).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Group, null, tint = Color(0xFF7B6CF0), modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(n.playlistName ?: "Group playlist", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Tap to open and add your songs", color = GlassSub, fontSize = 12.sp)
+                        }
+                    }
+                }
+                InboxNotificationType.REACTION -> {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(n.reaction ?: "💬", fontSize = 30.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            n.message?.let { Text("“$it”", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                            Text("on “${n.songTitle ?: "your share"}”", color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
                 InboxNotificationType.PLAYLIST_SHARED -> {
                     Spacer(Modifier.height(10.dp))
@@ -357,6 +500,20 @@ private fun LazyListScope.inboxTab(
                             GradientButton(if (p?.isFailed == true) "Retry" else "Download", { onDownload(n) }, Modifier.weight(1f), icon = Icons.Rounded.FileDownload, height = 40.dp)
                         }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("❤️", "🔥", "😂", "😢", "👏").forEach { e ->
+                            val mine = n.myReaction == e
+                            Box(
+                                Modifier.size(36.dp).clip(CircleShape)
+                                    .background(if (mine) GlassAccent.copy(alpha = 0.18f) else GlassInk.copy(alpha = 0.05f))
+                                    .clickable(enabled = !mine) { onReact(n, e) },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(e, fontSize = 17.sp) }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        TextLink("Reply", Icons.Rounded.ChatBubbleOutline, { onReply(n) })
+                    }
                 }
             }
         }
@@ -365,13 +522,40 @@ private fun LazyListScope.inboxTab(
 
 // ─────────────────────────────── Friends ───────────────────────────────
 
-private fun LazyListScope.friendsTab(friends: List<Friend>, busy: Set<String>, onRemove: (Friend) -> Unit) {
+private fun LazyListScope.friendsTab(
+    friends: List<Friend>,
+    busy: Set<String>,
+    activity: Map<String, com.waleve.player.domain.model.NowPlaying>,
+    shareActivity: Boolean,
+    onShareActivity: (Boolean) -> Unit,
+    onPlay: (com.waleve.player.domain.model.NowPlaying) -> Unit,
+    onRemove: (Friend) -> Unit,
+) {
+    item {
+        Row(
+            Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp), alpha = 0.62f, elevation = 0.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Share what I'm listening to", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Friends see your current song", color = GlassSub, fontSize = 12.sp)
+            }
+            androidx.compose.material3.Switch(
+                shareActivity, onShareActivity,
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = GlassAccent, checkedThumbColor = Color.White),
+            )
+        }
+    }
     if (friends.isEmpty()) {
         item { EmptyNote(Icons.Rounded.Group, "No friends yet", "Search by name, Gmail or friend code above, or tap Invite to send your code.") }
         return
     }
     items(friends, key = { "f_" + it.uid }) { f ->
-        PersonRow(f) {
+        val np = activity[f.uid]
+        PersonRow(f, status = np?.let { (if (it.isPlaying) "▶ " else "Paused · ") + it.track.title + (it.track.artist.takeIf { a -> a.isNotBlank() }?.let { a -> " · $a" } ?: "") }) {
+            if (np != null && np.track.playable) {
+                IconButton(onClick = { onPlay(np) }) { Icon(Icons.Rounded.PlayArrow, "Play ${np.track.title}", tint = GlassAccent) }
+            }
             if (f.uid in busy) CircularProgressIndicator(Modifier.size(20.dp), color = GlassAccent, strokeWidth = 2.dp)
             else Box {
                 var menu by remember { mutableStateOf(false) }
@@ -445,7 +629,7 @@ private fun LazyListScope.requestsTab(
 // ─────────────────────────────── Bits ───────────────────────────────
 
 @Composable
-private fun PersonRow(f: Friend, trailing: @Composable () -> Unit) {
+private fun PersonRow(f: Friend, status: String? = null, trailing: @Composable () -> Unit) {
     Row(
         Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp), alpha = 0.62f, elevation = 0.dp).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -454,7 +638,8 @@ private fun PersonRow(f: Friend, trailing: @Composable () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(f.displayName, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOf(f.friendCode, f.email).filter { it.isNotBlank() }.joinToString("  ·  "), color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (status != null) Text(status, color = GlassAccent, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            else Text(listOf(f.friendCode, f.email).filter { it.isNotBlank() }.joinToString("  ·  "), color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing()
     }
@@ -489,6 +674,24 @@ private fun headline(n: InboxNotification): String = when (n.type) {
     InboxNotificationType.PLAYLIST_SHARED -> "${n.fromName} shared a playlist"
     InboxNotificationType.SONG_SHARED -> "${n.fromName} shared ${if (n.isAudiobook) "an audiobook" else "a song"}"
     InboxNotificationType.FRIEND_REQUEST -> "${n.fromName} sent a friend request"
+    InboxNotificationType.LISTEN_INVITE -> "${n.fromName} invited you to listen together"
+    InboxNotificationType.COLLAB_INVITE -> "${n.fromName} added you to a group playlist"
+    InboxNotificationType.REACTION -> "${n.fromName} ${if (n.message != null) "replied" else "reacted"}"
+}
+
+@Composable
+private fun TogetherTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String,
+    onClick: () -> Unit, modifier: Modifier = Modifier, highlight: Boolean = false,
+) {
+    Column(modifier.glass(RoundedCornerShape(22.dp), alpha = 0.75f).clickable(onClick = onClick).padding(14.dp)) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(GlassGradient), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(sub, color = if (highlight) GlassDanger else GlassSub, fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 private fun metaLine(n: InboxNotification): String = buildString {

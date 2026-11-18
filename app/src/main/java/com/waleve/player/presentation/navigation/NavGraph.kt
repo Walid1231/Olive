@@ -263,8 +263,25 @@ fun NavGraph(
                     onOpenProfile = {
                         navController.navigate(ProfileRoute)
                     },
+                    onOpenGroupPlaylists = { navController.navigate(GroupPlaylistsRoute) },
+                    onOpenGroupPlaylist = { id -> navController.navigate(GroupPlaylistRoute(id)) },
                 )
             }
+        }
+
+        composable<GroupPlaylistsRoute> {
+            com.waleve.player.presentation.together.GroupPlaylistsScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { id -> navController.navigate(GroupPlaylistRoute(id)) },
+            )
+        }
+
+        composable<GroupPlaylistRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<GroupPlaylistRoute>()
+            com.waleve.player.presentation.together.GroupPlaylistDetailScreen(
+                id = route.id,
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable<ProfileRoute> {

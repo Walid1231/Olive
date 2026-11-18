@@ -269,6 +269,15 @@ class FriendsViewModel @Inject constructor(
             _downloadProgress.value = _downloadProgress.value - notifId
         }
     }
+    /** React with an emoji and/or a short reply to something a friend shared. */
+    fun react(n: InboxNotification, emoji: String?, message: String? = null) {
+        viewModelScope.launch {
+            friendRepository.reactToShare(n, emoji, message)
+                .onSuccess { ok(if (message.isNullOrBlank()) "Sent ${emoji ?: ""} to ${n.fromName}" else "Reply sent to ${n.fromName}") }
+                .onFailure { fail(it, "Couldn't send") }
+        }
+    }
+
     fun clearInbox() { viewModelScope.launch { friendRepository.clearInbox(); ok("Inbox cleared") } }
 
     /**

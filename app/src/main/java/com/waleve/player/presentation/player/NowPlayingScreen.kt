@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -585,6 +586,21 @@ fun NowPlayingScreen(
                     }
                 }
 
+                // Listen together
+                val togetherVm: com.waleve.player.presentation.together.TogetherViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                val tHost by togetherVm.hosting.collectAsState()
+                val tGuest by togetherVm.guest.collectAsState()
+                var showTogether by remember { mutableStateOf(false) }
+                val inSession = tHost != null || tGuest != null
+                SpotifyActionButton(
+                    icon = Icons.Filled.Headphones,
+                    label = "Together",
+                    tint = if (inSession) accentColor else NpInk.copy(alpha = 0.55f),
+                    isActive = inSession,
+                    onClick = { showTogether = true },
+                )
+                if (showTogether) com.waleve.player.presentation.together.ListenTogetherSheet(onDismiss = { showTogether = false }, vm = togetherVm)
+
                 // Share
                 SpotifyActionButton(
                     icon = Icons.Filled.Share,
@@ -688,7 +704,7 @@ private fun SpotifyActionButton(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

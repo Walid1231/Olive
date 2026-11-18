@@ -197,7 +197,7 @@ class PlaybackController @Inject constructor(
     fun previous() { mediaController?.seekToPreviousMediaItem() }
     fun seekTo(position: Long) { mediaController?.seekTo(position) }
 
-    fun setQueue(songs: List<Song>, startIndex: Int = 0) {
+    fun setQueue(songs: List<Song>, startIndex: Int = 0, startPositionMs: Long? = null, playWhenReady: Boolean = true) {
         saveBookmark(force = true)   // remember the audiobook we're leaving
         songMap.clear()
         currentQueue = songs
@@ -235,10 +235,10 @@ class PlaybackController @Inject constructor(
                     )
                     .build()
             }
-            val startPos = savedPosition(resolvedSongs.getOrNull(startIndex))
+            val startPos = startPositionMs ?: savedPosition(resolvedSongs.getOrNull(startIndex))
             mediaController?.setMediaItems(mediaItems, startIndex, startPos)
             mediaController?.prepare()
-            mediaController?.play()
+            if (playWhenReady) mediaController?.play() else mediaController?.pause()
         }
     }
 
