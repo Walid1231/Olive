@@ -74,7 +74,6 @@ fun ProfileScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(gc.surface)
             .statusBarsPadding()
     ) {
         // ─── Top Bar ─────────────────────────────────────────────────

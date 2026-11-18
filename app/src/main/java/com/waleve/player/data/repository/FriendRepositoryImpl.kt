@@ -1,7 +1,10 @@
 package com.waleve.player.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.waleve.player.domain.model.Friend
 import com.waleve.player.domain.model.FriendRequest
@@ -9,14 +12,19 @@ import com.waleve.player.domain.model.FriendRequestStatus
 import com.waleve.player.domain.model.InboxNotification
 import com.waleve.player.domain.model.InboxNotificationType
 import com.waleve.player.domain.repository.FriendRepository
+import com.waleve.player.domain.repository.SendRequestResult
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class FriendRepositoryImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
@@ -26,14 +34,21 @@ class FriendRepositoryImpl @Inject constructor(
 
     private val currentUid get() = auth.currentUser?.uid
 
-    // ─── Collections ─────────────────────────────────────────────────────────
     private val usersCol    get() = firestore.collection("users")
     private val requestsCol get() = firestore.collection("friendRequests")
+    private fun inboxCol(uid: String) = firestore.collection("users").document(uid).collection("inbox")
 
-    private fun inboxCol(uid: String) =
-        firestore.collection("users").document(uid).collection("inbox")
+    // ─── Auth-aware plumbing ─────────────────────────────────────────────────
+    override fun observeUid(): Flow<String?> = callbackFlow {
+        val l = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
+        auth.addAuthStateListener(l)
+        awaitClose { auth.removeAuthStateListener(l) }
+    }.distinctUntilChanged()
 
-    // ─── Ensure profile ───────────────────────────────────────────────────────
+    private fun <T> perUser(empty: T, block: (String) -> Flow<T>): Flow<T> =
+        observeUid().flatMapLatest { uid -> if (uid == null) flowOf(empty) else block(uid) }
+
+    // ─── Profile ─────────────────────────────────────────────────────────────
     override suspend fun ensureUserProfile(uid: String, displayName: String, email: String) {
         val doc = usersCol.document(uid).get().await()
         val data = mutableMapOf<String, Any>("uid" to uid, "email" to email.lowercase())
@@ -45,210 +60,201 @@ class FriendRepositoryImpl @Inject constructor(
         usersCol.document(uid).set(data, SetOptions.merge()).await()
     }
 
-    // ─── Search users ─────────────────────────────────────────────────────────
+    // ─── Search ──────────────────────────────────────────────────────────────
     override suspend fun searchUsers(query: String): List<Friend> {
         val uid = currentUid ?: return emptyList()
         val lower = query.lowercase().trim()
         if (lower.length < 2) return emptyList()
-
         val snapshot = usersCol
             .whereGreaterThanOrEqualTo("displayNameLower", lower)
             .whereLessThan("displayNameLower", lower + "\uf8ff")
-            .limit(20)
-            .get()
-            .await()
-
-        return snapshot.documents.mapNotNull { doc ->
-            val docUid = doc.getString("uid") ?: return@mapNotNull null
-            if (docUid == uid) return@mapNotNull null // exclude self
-            docToFriend(doc)
-        }
+            .limit(20).get().await()
+        return snapshot.documents.filter { it.id != uid }.map { docToFriend(it) }
     }
 
-    // ─── Search by Friend Code ────────────────────────────────────────────────
     override suspend fun searchByFriendCode(code: String): Friend? {
         val uid = currentUid ?: return null
-        val upper = code.uppercase().trim()
-        if (!upper.startsWith("WLEV-")) return null
-
-        val snapshot = usersCol
-            .whereEqualTo("friendCode", upper)
-            .limit(1)
-            .get()
-            .await()
-
-        return snapshot.documents.firstOrNull()?.let { doc ->
-            val docUid = doc.getString("uid") ?: return null
-            if (docUid == uid) return null // can't add self
-            docToFriend(doc)
+        val raw = code.uppercase().trim().replace(" ", "")
+        if (raw.length < 4) return null
+        val candidates = if (raw.contains("-")) listOf(raw) else listOf("OLV-$raw", "WLEV-$raw")
+        for (c in candidates) {
+            val snap = usersCol.whereEqualTo("friendCode", c).limit(1).get().await()
+            val doc = snap.documents.firstOrNull() ?: continue
+            return if (doc.id == uid) null else docToFriend(doc)
         }
+        return null
     }
 
-    // ─── Search by Email ──────────────────────────────────────────────────────
     override suspend fun searchByEmail(email: String): Friend? {
         val uid = currentUid ?: return null
-        val trimmed = email.lowercase().trim()
+        val trimmed = email.trim()
         if (!trimmed.contains("@")) return null
+        for (e in listOf(trimmed.lowercase(), trimmed).distinct()) {
+            val doc = usersCol.whereEqualTo("email", e).limit(1).get().await().documents.firstOrNull() ?: continue
+            return if (doc.id == uid) null else docToFriend(doc)
+        }
+        return null
+    }
 
-        val snapshot = usersCol
-            .whereEqualTo("email", trimmed)
-            .limit(1)
-            .get()
-            .await()
+    private fun docToFriend(doc: DocumentSnapshot) = Friend(
+        uid         = doc.getString("uid") ?: doc.id,
+        displayName = doc.getString("displayName") ?: "Unknown",
+        email       = doc.getString("email") ?: "",
+        avatarUrl   = doc.getString("avatarUrl")?.takeIf { it.isNotBlank() },
+        friendCode  = doc.getString("friendCode") ?: "",
+    )
 
-        return snapshot.documents.firstOrNull()?.let { doc ->
-            val docUid = doc.getString("uid") ?: return null
-            if (docUid == uid) return null // can't add self
-            docToFriend(doc)
+    @Suppress("UNCHECKED_CAST")
+    private fun friendIdsOf(doc: DocumentSnapshot): List<String> = doc.get("friendIds") as? List<String> ?: emptyList()
+
+    // ─── Requests: send ─────────────────────────────────────────────────────
+    override suspend fun sendFriendRequest(toUid: String, toName: String): Result<SendRequestResult> = runCatching {
+        val uid = currentUid ?: error("Please sign in first")
+        if (toUid == uid) error("That's your own account 🙂")
+        val me = usersCol.document(uid).get().await()
+        if (toUid in friendIdsOf(me)) error("You're already friends with $toName")
+
+        // They already asked me → just accept theirs (no duplicate requests)
+        val theirs = requestsCol.whereEqualTo("fromUid", toUid).whereEqualTo("toUid", uid)
+            .whereEqualTo("status", "PENDING").get().await().documents.firstOrNull()
+        if (theirs != null) {
+            acceptFriendRequest(theirs.id, toUid).getOrThrow()
+            return@runCatching SendRequestResult.BECAME_FRIENDS
+        }
+        val mine = requestsCol.whereEqualTo("fromUid", uid).whereEqualTo("toUid", toUid)
+            .whereEqualTo("status", "PENDING").get().await()
+        if (!mine.isEmpty) error("Request already sent — waiting for $toName")
+
+        val them = usersCol.document(toUid).get().await()
+        val myName = me.getString("displayName") ?: "Someone"
+        val myAvatar = me.getString("avatarUrl") ?: ""
+        val now = System.currentTimeMillis()
+        val reqRef = requestsCol.document()
+        val notifRef = inboxCol(toUid).document()
+        firestore.batch().apply {
+            set(reqRef, mapOf(
+                "requestId" to reqRef.id, "fromUid" to uid, "fromName" to myName, "fromAvatar" to myAvatar,
+                "toUid" to toUid, "toName" to (them.getString("displayName") ?: toName),
+                "toAvatar" to (them.getString("avatarUrl") ?: ""), "status" to "PENDING", "sentAt" to now,
+            ))
+            set(notifRef, mapOf(
+                "notifId" to notifRef.id, "type" to "FRIEND_REQUEST", "fromUid" to uid, "fromName" to myName,
+                "fromAvatar" to myAvatar, "requestId" to reqRef.id, "sentAt" to now, "isRead" to false,
+            ))
+        }.commit().await()
+        SendRequestResult.SENT
+    }
+
+    // ─── Requests: accept / decline / cancel ────────────────────────────────
+    override suspend fun acceptFriendRequest(requestId: String, fromUid: String): Result<Unit> = runCatching {
+        val uid = currentUid ?: error("Please sign in first")
+        val req = requestsCol.document(requestId).get().await()
+        if (!req.exists()) error("This request no longer exists")
+        when (req.getString("status")) {
+            "CANCELLED" -> error("They took this request back")
+            "ACCEPTED" -> return@runCatching
+        }
+        val me = usersCol.document(uid).get().await()
+        val myName = me.getString("displayName") ?: "Someone"
+        val now = System.currentTimeMillis()
+        val notifRef = inboxCol(fromUid).document()
+        // One atomic write: request accepted + both friend lists + "accepted" notice for them
+        firestore.batch().apply {
+            update(requestsCol.document(requestId), mapOf("status" to "ACCEPTED", "respondedAt" to now))
+            set(usersCol.document(uid), mapOf("friendIds" to FieldValue.arrayUnion(fromUid), "friendCount" to FieldValue.increment(1)), SetOptions.merge())
+            update(usersCol.document(fromUid), mapOf("friendIds" to FieldValue.arrayUnion(uid), "friendCount" to FieldValue.increment(1)))
+            set(notifRef, mapOf(
+                "notifId" to notifRef.id, "type" to "FRIEND_ACCEPTED", "fromUid" to uid, "fromName" to myName,
+                "fromAvatar" to (me.getString("avatarUrl") ?: ""), "requestId" to requestId, "sentAt" to now, "isRead" to false,
+            ))
+        }.commit().await()
+        deleteRequestNotices(uid, requestId)
+    }
+
+    override suspend fun declineFriendRequest(requestId: String): Result<Unit> = runCatching {
+        val uid = currentUid ?: error("Please sign in first")
+        requestsCol.document(requestId).update(mapOf("status" to "DECLINED", "respondedAt" to System.currentTimeMillis())).await()
+        deleteRequestNotices(uid, requestId)
+    }
+
+    override suspend fun cancelFriendRequest(requestId: String): Result<Unit> = runCatching {
+        currentUid ?: error("Please sign in first")
+        requestsCol.document(requestId).update(mapOf("status" to "CANCELLED", "respondedAt" to System.currentTimeMillis())).await()
+    }
+
+    private suspend fun deleteRequestNotices(uid: String, requestId: String) {
+        runCatching {
+            inboxCol(uid).whereEqualTo("requestId", requestId).get().await().documents
+                .filter { it.getString("type") == "FRIEND_REQUEST" }
+                .forEach { it.reference.delete().await() }
         }
     }
 
-    /** Helper: map a Firestore document to a Friend. */
-    private fun docToFriend(doc: com.google.firebase.firestore.DocumentSnapshot): Friend {
-        return Friend(
-            uid         = doc.getString("uid") ?: doc.id,
-            displayName = doc.getString("displayName") ?: "Unknown",
-            email       = doc.getString("email") ?: "",
-            avatarUrl   = doc.getString("avatarUrl")?.takeIf { it.isNotBlank() },
-            friendCode  = doc.getString("friendCode") ?: "",
-        )
+    // ─── Remove friend (both sides, atomically) ─────────────────────────────
+    override suspend fun removeFriend(friendUid: String): Result<Unit> = runCatching {
+        val uid = currentUid ?: error("Please sign in first")
+        firestore.batch().apply {
+            update(usersCol.document(uid), mapOf("friendIds" to FieldValue.arrayRemove(friendUid), "friendCount" to FieldValue.increment(-1)))
+            update(usersCol.document(friendUid), mapOf("friendIds" to FieldValue.arrayRemove(uid), "friendCount" to FieldValue.increment(-1)))
+        }.commit().await()
     }
 
-
-    // ─── Send friend request ──────────────────────────────────────────────────
-    override suspend fun sendFriendRequest(toUid: String, toName: String): Result<Unit> {
-        return try {
-            val uid = currentUid ?: return Result.failure(Exception("Not signed in"))
-            val meDoc = usersCol.document(uid).get().await()
-            val myName = meDoc.getString("displayName") ?: "Unknown"
-
-            // Check if request already exists
-            val existing = requestsCol
-                .whereEqualTo("fromUid", uid)
-                .whereEqualTo("toUid", toUid)
-                .whereEqualTo("status", "PENDING")
-                .get().await()
-            if (!existing.isEmpty) return Result.failure(Exception("Request already sent"))
-
-            val docRef = requestsCol.document()
-            val requestId = docRef.id
-            val data = mapOf(
-                "requestId" to requestId,
-                "fromUid"   to uid,
-                "fromName"  to myName,
-                "toUid"     to toUid,
-                "toName"    to toName,
-                "status"    to "PENDING",
-                "sentAt"    to System.currentTimeMillis(),
-            )
-            docRef.set(data).await()
-
-            // Push inbox notification to recipient
-            val notifRef = inboxCol(toUid).document()
-            val notif = mapOf(
-                "notifId"   to notifRef.id,
-                "type"      to "FRIEND_REQUEST",
-                "fromUid"   to uid,
-                "fromName"  to myName,
-                "requestId" to requestId,
-                "sentAt"    to System.currentTimeMillis(),
-                "isRead"    to false,
-            )
-            notifRef.set(notif).await()
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    // ─── Accept friend request ────────────────────────────────────────────────
-    override suspend fun acceptFriendRequest(requestId: String, fromUid: String): Result<Unit> {
-        return try {
-            val uid = currentUid ?: return Result.failure(Exception("Not signed in"))
-
-            // Update request status
-            requestsCol.document(requestId).update("status", "ACCEPTED").await()
-
-            // Add each other to friend lists (array union) + increment friendCount
-            usersCol.document(uid).update(
-                mapOf(
-                    "friendIds" to com.google.firebase.firestore.FieldValue.arrayUnion(fromUid),
-                    "friendCount" to com.google.firebase.firestore.FieldValue.increment(1),
-                )
-            ).await()
-            usersCol.document(fromUid).update(
-                mapOf(
-                    "friendIds" to com.google.firebase.firestore.FieldValue.arrayUnion(uid),
-                    "friendCount" to com.google.firebase.firestore.FieldValue.increment(1),
-                )
-            ).await()
-
-            // Remove the inbox notification
-            val notifs = inboxCol(uid)
-                .whereEqualTo("requestId", requestId).get().await()
-            notifs.documents.forEach { it.reference.delete() }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    // ─── Decline friend request ───────────────────────────────────────────────
-    override suspend fun declineFriendRequest(requestId: String): Result<Unit> {
-        return try {
-            val uid = currentUid ?: return Result.failure(Exception("Not signed in"))
-            requestsCol.document(requestId).update("status", "DECLINED").await()
-            val notifs = inboxCol(uid)
-                .whereEqualTo("requestId", requestId).get().await()
-            notifs.documents.forEach { it.reference.delete() }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    // ─── Observe friends (real-time) ──────────────────────────────────────────
-    override fun observeFriends(): Flow<List<Friend>> {
-        val uid = currentUid ?: return flowOf(emptyList())
-        return callbackFlow {
-            val listener = usersCol.document(uid)
-                .addSnapshotListener { snap, _ ->
-                    if (snap == null) { trySend(emptyList()); return@addSnapshotListener }
-                    @Suppress("UNCHECKED_CAST")
-                    val friendIds = snap.get("friendIds") as? List<String> ?: emptyList()
-                    if (friendIds.isEmpty()) { trySend(emptyList()); return@addSnapshotListener }
-
-                    // Fetch friend profiles by document id (works even if a doc lacks the "uid" field)
-                    val tasks = friendIds.distinct().map { usersCol.document(it).get() }
-                    com.google.android.gms.tasks.Tasks.whenAllComplete(tasks).addOnCompleteListener {
-                        val friends = tasks.mapNotNull { t ->
-                            if (!t.isSuccessful) return@mapNotNull null
-                            val doc = t.result ?: return@mapNotNull null
-                            if (!doc.exists()) return@mapNotNull null
-                            docToFriend(doc)
-                        }
-                        trySend(friends.sortedBy { it.displayName.lowercase() })
+    // ─── Real-time lists ─────────────────────────────────────────────────────
+    override fun observeFriends(): Flow<List<Friend>> = perUser(emptyList()) { uid ->
+        callbackFlow {
+            val listener = usersCol.document(uid).addSnapshotListener { snap, _ ->
+                if (snap == null) return@addSnapshotListener
+                val ids = friendIdsOf(snap).distinct()
+                if (ids.isEmpty()) { trySend(emptyList()); return@addSnapshotListener }
+                val tasks = ids.map { usersCol.document(it).get() }
+                com.google.android.gms.tasks.Tasks.whenAllComplete(tasks).addOnCompleteListener {
+                    val friends = tasks.mapNotNull { t ->
+                        if (!t.isSuccessful) return@mapNotNull null
+                        val doc = t.result ?: return@mapNotNull null
+                        if (!doc.exists()) null else docToFriend(doc)
                     }
+                    trySend(friends.sortedBy { it.displayName.lowercase() })
                 }
+            }
             awaitClose { listener.remove() }
         }
     }
 
-    // ─── Observe inbox (real-time) ─────────────────────────────────────────────
-    override fun observeInbox(): Flow<List<InboxNotification>> {
-        val uid = currentUid ?: return flowOf(emptyList())
-        return callbackFlow {
+    private fun docToRequest(doc: DocumentSnapshot) = FriendRequest(
+        requestId = doc.getString("requestId") ?: doc.id,
+        fromUid   = doc.getString("fromUid") ?: "",
+        fromName  = doc.getString("fromName") ?: "Someone",
+        toUid     = doc.getString("toUid") ?: "",
+        toName    = doc.getString("toName") ?: "Someone",
+        status    = runCatching { FriendRequestStatus.valueOf(doc.getString("status") ?: "PENDING") }.getOrDefault(FriendRequestStatus.PENDING),
+        sentAt    = doc.getLong("sentAt") ?: 0L,
+        fromAvatar = doc.getString("fromAvatar")?.takeIf { it.isNotBlank() },
+        toAvatar   = doc.getString("toAvatar")?.takeIf { it.isNotBlank() },
+    )
+
+    private fun requestsFlow(field: String, uid: String): Flow<List<FriendRequest>> = callbackFlow {
+        val listener = requestsCol.whereEqualTo(field, uid).whereEqualTo("status", "PENDING")
+            .addSnapshotListener { snap, _ ->
+                if (snap == null) return@addSnapshotListener
+                trySend(snap.documents.map { docToRequest(it) }.sortedByDescending { it.sentAt })
+            }
+        awaitClose { listener.remove() }
+    }
+
+    override fun observeIncomingRequests(): Flow<List<FriendRequest>> = perUser(emptyList()) { requestsFlow("toUid", it) }
+    override fun observeOutgoingRequests(): Flow<List<FriendRequest>> = perUser(emptyList()) { requestsFlow("fromUid", it) }
+
+    override fun observeInbox(): Flow<List<InboxNotification>> = perUser(emptyList()) { uid ->
+        callbackFlow {
             val listener = inboxCol(uid)
-                .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .limit(50)
+                .orderBy("sentAt", Query.Direction.DESCENDING)
+                .limit(100)
                 .addSnapshotListener { snap, _ ->
-                    if (snap == null) { trySend(emptyList()); return@addSnapshotListener }
+                    if (snap == null) return@addSnapshotListener
                     val items = snap.documents.mapNotNull { doc ->
-                        val typeStr = doc.getString("type") ?: return@mapNotNull null
-                        val type = when (typeStr) {
+                        val type = when (doc.getString("type")) {
                             "FRIEND_REQUEST"  -> InboxNotificationType.FRIEND_REQUEST
+                            "FRIEND_ACCEPTED" -> InboxNotificationType.FRIEND_ACCEPTED
                             "PLAYLIST_SHARED" -> InboxNotificationType.PLAYLIST_SHARED
                             "SONG_SHARED"     -> InboxNotificationType.SONG_SHARED
                             else              -> return@mapNotNull null
@@ -258,10 +264,11 @@ class FriendRepositoryImpl @Inject constructor(
                             type         = type,
                             fromUid      = doc.getString("fromUid") ?: "",
                             fromName     = doc.getString("fromName") ?: "Unknown",
+                            fromAvatar   = doc.getString("fromAvatar")?.takeIf { it.isNotBlank() },
                             shareId      = doc.getString("shareId"),
                             playlistName = doc.getString("playlistName"),
                             songTitle    = doc.getString("songTitle"),
-                            thumbnailUrl = doc.getString("thumbnailUrl"),
+                            thumbnailUrl = doc.getString("thumbnailUrl")?.takeIf { it.isNotBlank() },
                             videoId      = doc.getString("videoId"),
                             requestId    = doc.getString("requestId"),
                             sentAt       = doc.getLong("sentAt") ?: 0L,
@@ -281,54 +288,42 @@ class FriendRepositoryImpl @Inject constructor(
         }
     }
 
-    // ─── Mark notification read ───────────────────────────────────────────────
+    // ─── Inbox actions ───────────────────────────────────────────────────────
     override suspend fun markNotificationRead(notifId: String) {
         val uid = currentUid ?: return
-        inboxCol(uid).document(notifId).update("isRead", true).await()
+        runCatching { inboxCol(uid).document(notifId).update("isRead", true).await() }
     }
 
-    // ─── Outgoing requests ────────────────────────────────────────────────────
+    override suspend fun markAllRead() {
+        val uid = currentUid ?: return
+        runCatching {
+            val unread = inboxCol(uid).whereEqualTo("isRead", false).get().await().documents
+            unread.chunked(400).forEach { chunk ->
+                firestore.batch().apply { chunk.forEach { update(it.reference, "isRead", true) } }.commit().await()
+            }
+        }
+    }
+
+    override suspend fun deleteNotification(notifId: String) {
+        val uid = currentUid ?: return
+        runCatching { inboxCol(uid).document(notifId).delete().await() }
+    }
+
+    override suspend fun clearInbox() {
+        val uid = currentUid ?: return
+        runCatching {
+            val docs = inboxCol(uid).get().await().documents.filter { it.getString("type") != "FRIEND_REQUEST" }
+            docs.chunked(400).forEach { chunk ->
+                firestore.batch().apply { chunk.forEach { delete(it.reference) } }.commit().await()
+            }
+        }
+    }
+
     override suspend fun getOutgoingRequests(): List<FriendRequest> {
         val uid = currentUid ?: return emptyList()
-        return try {
-            val snap = requestsCol
-                .whereEqualTo("fromUid", uid)
-                .whereEqualTo("status", "PENDING")
-                .get().await()
-            snap.documents.mapNotNull { doc ->
-                FriendRequest(
-                    requestId = doc.getString("requestId") ?: doc.id,
-                    fromUid   = uid,
-                    fromName  = doc.getString("fromName") ?: "",
-                    toUid     = doc.getString("toUid") ?: "",
-                    toName    = doc.getString("toName") ?: "",
-                    status    = FriendRequestStatus.PENDING,
-                    sentAt    = doc.getLong("sentAt") ?: 0L,
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    // ─── Remove friend ────────────────────────────────────────────────────────
-    override suspend fun removeFriend(friendUid: String): Result<Unit> {
-        return try {
-            val uid = currentUid ?: return Result.failure(Exception("Not signed in"))
-            usersCol.document(uid).update(
-                mapOf(
-                    "friendIds" to com.google.firebase.firestore.FieldValue.arrayRemove(friendUid),
-                    "friendCount" to com.google.firebase.firestore.FieldValue.increment(-1),
-                )
-            ).await()
-            usersCol.document(friendUid).update(
-                mapOf(
-                    "friendIds" to com.google.firebase.firestore.FieldValue.arrayRemove(uid),
-                    "friendCount" to com.google.firebase.firestore.FieldValue.increment(-1),
-                )
-            ).await()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        return runCatching {
+            requestsCol.whereEqualTo("fromUid", uid).whereEqualTo("status", "PENDING").get().await().documents.map { docToRequest(it) }
+        }.getOrDefault(emptyList())
     }
 
     // ─── Share a single song / audiobook ─────────────────────────────────────
@@ -343,6 +338,7 @@ class FriendRepositoryImpl @Inject constructor(
             val uid = currentUid ?: return Result.failure(Exception("Not signed in"))
             val meDoc = usersCol.document(uid).get().await()
             val myName = meDoc.getString("displayName") ?: "Unknown"
+            val myAvatar = meDoc.getString("avatarUrl") ?: ""
 
             val isRemote = song.source == "stream" && song.path.startsWith("http")
             val videoId = song.videoId
@@ -377,6 +373,7 @@ class FriendRepositoryImpl @Inject constructor(
                     "type"         to "SONG_SHARED",
                     "fromUid"      to uid,
                     "fromName"     to myName,
+                    "fromAvatar"   to myAvatar,
                     "songTitle"    to song.title,
                     "artist"       to song.artist,
                     "durationMs"   to song.duration,

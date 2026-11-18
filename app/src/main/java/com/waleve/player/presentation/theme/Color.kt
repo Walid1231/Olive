@@ -58,3 +58,20 @@ val SurfaceVariant = Color(0xFF162636)
 val ErrorRed       = Color(0xFFCF6679)
 val SuccessGreen   = Color(0xFF4CAF50)
 val DividerColor   = Color(0xFF1E3345)
+
+// ── Light glassmorphism palette (Olive 1.2) ────────────
+val GlassInk          = Color(0xFF1C2333)
+val GlassSub          = Color(0xFF5B6478)
+val GlassMuted        = Color(0xFF8A93A6)
+val GlassAccent       = Color(0xFF2E9C73)
+val GlassAccentLight  = Color(0xFF46C190)
+val GlassAccentDeep   = Color(0xFF2E8FA8)
+val GlassSurface      = Color(0xFFF6F5FA)
+val GlassCard         = Color(0x9EFFFFFF)   // ~62 % white
+val GlassCardStrong   = Color(0xC7FFFFFF)   // ~78 % white
+val GlassStroke       = Color(0xE6FFFFFF)
+val GlassDanger       = Color(0xFFE0607E)
+val GlassBlobMint     = Color(0xFF9EE6C6)
+val GlassBlobLilac    = Color(0xFFC9B8FF)
+val GlassBlobPeach    = Color(0xFFFFCDB2)
+val GlassBlobSky      = Color(0xFFA9D6FF)

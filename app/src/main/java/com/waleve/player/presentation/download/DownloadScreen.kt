@@ -1,5 +1,6 @@
 package com.waleve.player.presentation.download
 
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -104,6 +105,7 @@ fun DownloadScreen(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .background(
                 if (isNight)
                     androidx.compose.ui.graphics.Brush.verticalGradient(
@@ -114,7 +116,7 @@ fun DownloadScreen(
                         )
                     )
                 else
-                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(gc.surface, gc.surface))
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
             )
             .verticalScroll(rememberScrollState()),
     ) {
@@ -132,7 +134,7 @@ fun DownloadScreen(
                             )
                         )
                     else
-                        androidx.compose.ui.graphics.Brush.verticalGradient(listOf(gc.surface, gc.surface))
+                        androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
                 )
                 .padding(horizontal = 20.dp)
                 .padding(top = 20.dp, bottom = 8.dp),

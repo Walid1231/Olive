@@ -9,6 +9,21 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
+// ── Light glass Material scheme ───────────────────────
+private val GlassColorScheme = lightColorScheme(
+    primary = GlassAccent, onPrimary = Color.White,
+    primaryContainer = Color(0xFFD5F2E5), onPrimaryContainer = GlassInk,
+    secondary = Color(0xFF2E8FA8), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE4EEFF), onSecondaryContainer = GlassInk,
+    tertiary = Color(0xFF7B6CF0), onTertiary = Color.White,
+    background = GlassSurface, onBackground = GlassInk,
+    surface = GlassSurface, onSurface = GlassInk,
+    surfaceVariant = Color(0xFFF0EEF6), onSurfaceVariant = GlassSub,
+    surfaceContainer = GlassSurface, surfaceContainerHigh = Color(0xFFF1EFF7), surfaceContainerLow = GlassSurface,
+    error = Color(0xFFE0607E), onError = Color.White,
+    outline = Color(0xFFD9DCE6), outlineVariant = Color(0xFFE8EAF1),
+)
+
 // ── Day (Light) Color Scheme ──────────────────────────
 private val GhibliDayColorScheme = lightColorScheme(
     primary             = GhibliForestMid,
@@ -60,63 +75,37 @@ private val GhibliNightColorScheme = darkColorScheme(
 @Immutable
 data class GhibliColors(
     val isNight: Boolean = false,
-    // Scene colors for Canvas/SVG drawing
-    val skyTop: androidx.compose.ui.graphics.Color        = GhibliSkyBlue,
-    val skyBottom: androidx.compose.ui.graphics.Color     = GhibliSkyLight,
-    val mountainFar: androidx.compose.ui.graphics.Color   = Color(0xFF7BAFC0),
-    val mountainMid: androidx.compose.ui.graphics.Color   = Color(0xFF4A8073),
-    val mountainNear: androidx.compose.ui.graphics.Color  = GhibliForestMid,
-    val ground: androidx.compose.ui.graphics.Color        = Color(0xFF3A7D55),
-    val road: androidx.compose.ui.graphics.Color          = Color(0xFF5C5048),
-    val roadMark: androidx.compose.ui.graphics.Color      = Color(0xFFE8D5A3),
-    val celestial: androidx.compose.ui.graphics.Color     = GhibliSunGold,
+    // Scene colors (legacy, kept so old code compiles)
+    val skyTop: androidx.compose.ui.graphics.Color        = Color(0xFFEEF2FA),
+    val skyBottom: androidx.compose.ui.graphics.Color     = Color(0xFFEEF6F2),
+    val mountainFar: androidx.compose.ui.graphics.Color   = Color(0xFFC9B8FF),
+    val mountainMid: androidx.compose.ui.graphics.Color   = Color(0xFF9EE6C6),
+    val mountainNear: androidx.compose.ui.graphics.Color  = Color(0xFFA9D6FF),
+    val ground: androidx.compose.ui.graphics.Color        = Color(0xFFFFCDB2),
+    val road: androidx.compose.ui.graphics.Color          = Color(0xFFE6E1EE),
+    val roadMark: androidx.compose.ui.graphics.Color      = Color(0xFFFFFFFF),
+    val celestial: androidx.compose.ui.graphics.Color     = Color(0xFFFFF4C2),
     val starAlpha: Float                                  = 0f,
     val fireflyAlpha: Float                               = 0f,
-    // UI surface colors
-    val surface: androidx.compose.ui.graphics.Color       = GhibliDaySurface,
-    val surfaceCard: androidx.compose.ui.graphics.Color   = GhibliDayCard,
-    val textPrimary: androidx.compose.ui.graphics.Color   = GhibliDayText,
-    val textSecondary: androidx.compose.ui.graphics.Color = GhibliDayTextSub,
-    val textMuted: androidx.compose.ui.graphics.Color     = GhibliDayMuted,
-    val accent: androidx.compose.ui.graphics.Color        = GhibliForestMid,
-    val accentLight: androidx.compose.ui.graphics.Color   = GhibliForestLight,
-    val glassOverlay: androidx.compose.ui.graphics.Color  = GlassWhiteDay,
-    val glassBorder: androidx.compose.ui.graphics.Color   = GlassBorderDay,
-    val navBg: androidx.compose.ui.graphics.Color         = GhibliDaySurface,
-    val miniPlayerStart: androidx.compose.ui.graphics.Color = GhibliForestMid,
-    val miniPlayerEnd: androidx.compose.ui.graphics.Color   = GhibliSkyBlue,
-    val playerBgTop: androidx.compose.ui.graphics.Color   = GhibliForestDeep,
-    val playerBgBottom: androidx.compose.ui.graphics.Color = Color(0xFF0D2B1D),
+    // ── Light glass UI ──
+    val surface: androidx.compose.ui.graphics.Color       = GlassSurface,        // sheets, dialogs, detail screens
+    val surfaceCard: androidx.compose.ui.graphics.Color   = GlassCard,           // translucent white "glass"
+    val textPrimary: androidx.compose.ui.graphics.Color   = GlassInk,
+    val textSecondary: androidx.compose.ui.graphics.Color = GlassSub,
+    val textMuted: androidx.compose.ui.graphics.Color     = GlassMuted,
+    val accent: androidx.compose.ui.graphics.Color        = GlassAccent,
+    val accentLight: androidx.compose.ui.graphics.Color   = GlassAccentLight,
+    val glassOverlay: androidx.compose.ui.graphics.Color  = GlassCard,
+    val glassBorder: androidx.compose.ui.graphics.Color   = GlassStroke,
+    val navBg: androidx.compose.ui.graphics.Color         = GlassCardStrong,
+    val miniPlayerStart: androidx.compose.ui.graphics.Color = GlassCardStrong,
+    val miniPlayerEnd: androidx.compose.ui.graphics.Color   = GlassCardStrong,
+    val playerBgTop: androidx.compose.ui.graphics.Color   = Color(0xFFF7EEF2),
+    val playerBgBottom: androidx.compose.ui.graphics.Color = Color(0xFFEEF6F2),
 )
 
-val GhibliNightColors = GhibliColors(
-    isNight        = true,
-    skyTop         = GhibliNightSky,
-    skyBottom      = GhibliNightDeep,
-    mountainFar    = Color(0xFF0F1E35),
-    mountainMid    = Color(0xFF112240),
-    mountainNear   = Color(0xFF0A1628),
-    ground         = Color(0xFF071020),
-    road           = Color(0xFF1A1A2E),
-    roadMark       = Color(0xFFF0E6C8),
-    celestial      = GhibliMoonGlow,
-    starAlpha      = 1f,
-    fireflyAlpha   = 1f,
-    surface        = GhibliNightMid,
-    surfaceCard    = GhibliNightCard,
-    textPrimary    = GhibliNightText,
-    textSecondary  = GhibliNightSub,
-    textMuted      = GhibliNightMuted,
-    accent         = GhibliNightAccent,
-    accentLight    = GhibliStarWhite,
-    glassOverlay   = GlassWhiteNight,
-    glassBorder    = GlassBorderNight,
-    navBg          = GhibliNightMid,
-    miniPlayerStart= Color(0xFF0D1F3C),
-    miniPlayerEnd  = Color(0xFF1A2F50),
-    playerBgTop    = GhibliNightSky,
-    playerBgBottom = GhibliNightDeep,
-)
+/** The app is light glass only now — night uses the same colours. */
+val GhibliNightColors = GhibliColors()
 
 val LocalGhibliColors = staticCompositionLocalOf { GhibliColors() }
 
@@ -125,8 +114,8 @@ fun WaLeveTheme(
     isNightMode: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val ghibliColors = if (isNightMode) GhibliNightColors else GhibliColors()
-    val materialScheme = if (isNightMode) GhibliNightColorScheme else GhibliDayColorScheme
+    val ghibliColors = GhibliColors()
+    val materialScheme = GlassColorScheme
 
     CompositionLocalProvider(LocalGhibliColors provides ghibliColors) {
         MaterialTheme(

@@ -30,7 +30,7 @@ data class UserProfile(
 /**
  * Status of a friend request.
  */
-enum class FriendRequestStatus { PENDING, ACCEPTED, DECLINED }
+enum class FriendRequestStatus { PENDING, ACCEPTED, DECLINED, CANCELLED }
 
 /**
  * A friend request between two users.
@@ -43,6 +43,8 @@ data class FriendRequest(
     val toName: String,
     val status: FriendRequestStatus = FriendRequestStatus.PENDING,
     val sentAt: Long = System.currentTimeMillis(),
+    val fromAvatar: String? = null,
+    val toAvatar: String? = null,
 )
 
 /**
@@ -79,6 +81,7 @@ data class InboxNotification(
     val type: InboxNotificationType,
     val fromUid: String,
     val fromName: String,
+    val fromAvatar: String? = null,
     val shareId: String? = null,          // set for PLAYLIST_SHARED
     val playlistName: String? = null,     // set for PLAYLIST_SHARED
     val songTitle: String? = null,        // set for SONG_SHARED
@@ -101,4 +104,4 @@ data class InboxNotification(
     val isDownloadable: Boolean get() = videoId != null || fileUrl != null
 }
 
-enum class InboxNotificationType { FRIEND_REQUEST, PLAYLIST_SHARED, SONG_SHARED }
+enum class InboxNotificationType { FRIEND_REQUEST, FRIEND_ACCEPTED, PLAYLIST_SHARED, SONG_SHARED }

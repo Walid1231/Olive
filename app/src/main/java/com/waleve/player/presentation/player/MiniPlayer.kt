@@ -1,5 +1,16 @@
 package com.waleve.player.presentation.player
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.waleve.player.presentation.components.Artwork
+import com.waleve.player.presentation.components.GlassGradient
+import com.waleve.player.presentation.components.GlassGradientH
+import com.waleve.player.presentation.components.glass
+import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassInk
+import com.waleve.player.presentation.theme.GlassSub
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
@@ -59,126 +70,59 @@ fun MiniPlayer(
         playerState.currentPosition.toFloat() / playerState.duration.toFloat()
     else 0f
 
-    val bgColor by animateColorAsState(
-        targetValue = if (isNightMode) GhibliNightCard else GhibliForestMid,
-        animationSpec = tween(1200),
-        label = "miniPlayerBg",
-    )
-    val progressBg by animateColorAsState(
-        targetValue = if (isNightMode) GhibliNightMid else Color(0xFF1B4332),
-        animationSpec = tween(1200),
-        label = "miniProgressBg",
-    )
-
-    Column(
+    // Light glass mini player (matches Figma "Light/Mini player")
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(bgColor)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .glass(RoundedCornerShape(22.dp), alpha = 0.82f)
             .clickable(onClick = onClick),
     ) {
-        // Progress bar at top of mini player
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                .background(progressBg)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = progress)
-                    .height(3.dp)
-                    .background(
-                        Brush.horizontalGradient(listOf(GhibliLeaf, Color(0xFF74C69D)))
-                    )
-            )
-        }
-
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(start = 9.dp, end = 12.dp, top = 9.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Album art
-            val appIconPainter = androidx.compose.ui.res.painterResource(com.waleve.player.R.mipmap.ic_launcher_foreground)
-            AsyncImage(
-                model = song.albumArtUri,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.White.copy(alpha = 0.12f)),
-                contentScale = ContentScale.Crop,
-                error = appIconPainter,
-                fallback = appIconPainter,
-            )
-
+            Artwork(song.albumArtUri, Modifier.size(48.dp), corner = 12.dp, seed = song.title.hashCode())
             Spacer(modifier = Modifier.width(12.dp))
-
-            // Song info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = cleanMiniTitle(song.title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.basicMarquee(
-                        iterations = Int.MAX_VALUE,
-                        velocity = 30.dp,
-                    ),
+                    color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = 30.dp),
                 )
                 Text(
-                    text = cleanMiniArtist(song.artist),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.65f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = cleanMiniArtist(song.artist) + if (song.isAudiobook) "  ·  Audiobook" else "",
+                    color = GlassSub, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Sleep timer indicator
             if (sleepTimerRemaining > 0) {
                 val totalSec = sleepTimerRemaining / 1000
-                val m = totalSec / 60
-                val s = totalSec % 60
-                Text(
-                    text = "💤 %d:%02d".format(m, s),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = GhibliLeaf,
-                )
+                Text("⏾ %d:%02d".format(totalSec / 60, totalSec % 60), color = GlassAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.width(6.dp))
             }
-
-            // Glass play/pause button
-            GlassCircleButton(
-                onClick = onPlayPause,
-                size = 38.dp,
-                filled = true,
-                fillColor = Color.White,
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(GlassGradient).clickable(onClick = onPlayPause),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = if (isNightMode) GhibliNightCard else GhibliForestMid,
-                    modifier = Modifier.size(22.dp),
+                    contentDescription = if (playerState.isPlaying) "Pause" else "Play",
+                    tint = Color.White, modifier = Modifier.size(22.dp),
                 )
             }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Glass next button
-            GlassCircleButton(onClick = onNext, size = 34.dp) {
-                Icon(
-                    imageVector = Icons.Filled.SkipNext,
-                    contentDescription = "Next",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
+            Spacer(modifier = Modifier.width(4.dp))
+            IconButton(onClick = onNext, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = GlassInk, modifier = Modifier.size(24.dp))
             }
+        }
+        // progress line along the bottom edge
+        Box(
+            Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp).fillMaxWidth().height(3.dp)
+                .clip(RoundedCornerShape(2.dp)).background(GlassInk.copy(alpha = 0.06f))
+        ) {
+            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(GlassGradientH))
         }
     }
 }

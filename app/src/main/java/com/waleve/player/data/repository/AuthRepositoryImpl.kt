@@ -296,12 +296,12 @@ class AuthRepositoryImpl @Inject constructor(
     private suspend fun generateUniqueFriendCode(): String {
         val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no I,O,0,1 to avoid confusion
         repeat(10) { // max 10 attempts
-            val code = "WLEV-" + (1..4).map { chars.random() }.joinToString("")
+            val code = "OLV-" + (1..4).map { chars.random() }.joinToString("")
             val existing = usersCol.whereEqualTo("friendCode", code).limit(1).get().await()
             if (existing.isEmpty) return code
         }
         // Extremely unlikely fallback — use longer code
-        val code = "WLEV-" + (1..6).map { chars.random() }.joinToString("")
+        val code = "OLV-" + (1..6).map { chars.random() }.joinToString("")
         return code
     }
 

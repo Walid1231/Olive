@@ -30,6 +30,10 @@ class LocalMusicRepositoryImpl @Inject constructor(
     override suspend fun scanMusic() = withContext(Dispatchers.IO) {
         val scanned = queryMediaStore()
         songDao.insertSongs(scanned.map { it.entity })
+        // Forget local songs whose files were deleted outside the app
+        val present = scanned.map { it.entity.path }.toHashSet()
+        val gone = songDao.getLocalSongs().filter { it.path !in present && !File(it.path).exists() }.map { it.id }
+        if (gone.isNotEmpty()) gone.chunked(500).forEach { songDao.removeFromAllPlaylists(it); songDao.deleteSongs(it) }
         // Insert uses IGNORE, so (re)apply the song/audiobook split to rows that already existed.
         scanned.groupBy { it.entity.mediaType }.forEach { (type, items) ->
             items.map { it.entity.path }.chunked(500).forEach { chunk ->
@@ -95,7 +99,21 @@ class LocalMusicRepositoryImpl @Inject constructor(
 
     override suspend fun insertSong(song: Song): Long = songDao.insertSong(song.toEntity())
 
-    override suspend fun deleteSong(songId: Long) = songDao.deleteSong(songId)
+    override suspend fun deleteSong(songId: Long) = removeFromLibrary(listOf(songId))
+
+    override suspend fun removeFromLibrary(songIds: List<Long>) {
+        if (songIds.isEmpty()) return
+        songIds.chunked(500).forEach { songDao.removeFromAllPlaylists(it); songDao.hideSongs(it) }
+    }
+
+    override suspend fun forgetSongs(songIds: List<Long>) {
+        if (songIds.isEmpty()) return
+        songIds.chunked(500).forEach { songDao.removeFromAllPlaylists(it); songDao.deleteSongs(it) }
+    }
+
+    override fun hiddenCount(): Flow<Int> = songDao.hiddenCount()
+
+    override suspend fun restoreHidden() = songDao.unhideAll()
 
     @Suppress("DEPRECATION")
     private fun queryMediaStore(): List<Scanned> {

@@ -110,7 +110,8 @@ fun SongListItem(
             .fillMaxWidth()
             .then(
                 if (isPlaying) Modifier
-                    .background(gc.accent.copy(alpha = 0.08f))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(gc.accent.copy(alpha = 0.10f))
                 else Modifier
             )
             .clickable(onClick = onClick)
@@ -132,37 +133,8 @@ fun SongListItem(
             )
         }
 
-        // Album art thumbnail with app icon fallback
-        if (!song.albumArtUri.isNullOrEmpty()) {
-            val appIconPainter = androidx.compose.ui.res.painterResource(com.waleve.player.R.mipmap.ic_launcher_foreground)
-            AsyncImage(
-                model = song.albumArtUri,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(gc.surfaceCard),
-                contentScale = ContentScale.Crop,
-                error = appIconPainter,
-                fallback = appIconPainter,
-            )
-        } else {
-            // Use app icon as fallback for songs without thumbnails
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(gc.surfaceCard),
-                contentAlignment = Alignment.Center,
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(com.waleve.player.R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-        }
+        // Album art (gradient + note fallback when the file has no cover)
+        Artwork(song.albumArtUri, Modifier.size(48.dp), corner = 12.dp, seed = song.title.hashCode())
 
         Spacer(modifier = Modifier.width(12.dp))
 
@@ -170,7 +142,7 @@ fun SongListItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = song.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = if (isPlaying) gc.accent else gc.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -183,7 +155,7 @@ fun SongListItem(
             Text(
                 text = if (isPlaying) "♪ $subtitle" else subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isPlaying) gc.accentLight else gc.textMuted,
+                color = if (isPlaying) gc.accent else gc.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -266,7 +238,7 @@ fun SongListItem(
                         text = { Text("Delete", color = Color(0xFFFF6B6B)) },
                         onClick = {
                             menuExpanded = false
-                            showDeleteConfirm = true
+                            onDeleteClick.invoke()
                         }
                     )
                 }

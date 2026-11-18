@@ -30,9 +30,11 @@ import com.waleve.player.presentation.update.UpdateDialog
 @Composable
 fun WaLeveAppContent() {
     val themeViewModel: ThemeViewModel = hiltViewModel()
-    val isNightMode by themeViewModel.isNightMode.collectAsStateWithLifecycle()
+    @Suppress("UNUSED_VARIABLE") val unusedTheme = themeViewModel
+    val isNightMode = false   // Olive 1.2: light glass only
 
-    WaLeveTheme(isNightMode = isNightMode) {
+    WaLeveTheme(isNightMode = false) {
+      com.waleve.player.presentation.components.GlassBackground {
         val navController = rememberNavController()
         val playerViewModel: PlayerViewModel = hiltViewModel()
         val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()
@@ -44,6 +46,9 @@ fun WaLeveAppContent() {
             currentDestination?.hasRoute(item.route::class) == true
         }?.route
         val showBottomBar = currentDestination?.hasRoute(NowPlayingRoute::class) != true
+
+        val badgeVm: com.waleve.player.presentation.friends.SocialBadgeViewModel = hiltViewModel()
+        val friendsBadge by badgeVm.badge.collectAsStateWithLifecycle()
 
         val updateViewModel: AppUpdateViewModel = hiltViewModel()
         val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
@@ -76,6 +81,7 @@ fun WaLeveAppContent() {
                         BottomNavBar(
                             currentRoute = currentRoute,
                             isNightMode = isNightMode,
+                            badges = mapOf("Friends" to friendsBadge),
                             onNavigate = { route ->
                                 navController.navigate(route) {
                                     popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -96,5 +102,6 @@ fun WaLeveAppContent() {
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
             )
         }
+    }
     }
 }

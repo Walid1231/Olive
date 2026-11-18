@@ -1,5 +1,11 @@
 package com.waleve.player.presentation.player
 
+import androidx.compose.foundation.border
+import com.waleve.player.presentation.components.GlassGradient
+import com.waleve.player.presentation.components.GlassGradientH
+import com.waleve.player.presentation.components.glass
+import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassInk
 import android.media.AudioManager
 import android.content.Context
 import androidx.compose.animation.animateColorAsState
@@ -159,14 +165,14 @@ fun NowPlayingScreen(
         animationSpec = tween(1400), label = "bgBottom",
     )
     val accentColor by animateColorAsState(
-        targetValue = if (isNightMode) GhibliLeaf else GhibliForestLight,
+        targetValue = GlassAccent,
         animationSpec = tween(1000), label = "accent",
     )
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(bgTop, bgBottom))),
+            .background(Color.Transparent),
     ) {
         Column(
             modifier = Modifier
@@ -188,7 +194,7 @@ fun NowPlayingScreen(
                     Icon(
                         Icons.Filled.KeyboardArrowDown,
                         contentDescription = "Back",
-                        tint = Color.White,
+                        tint = NpInk,
                         modifier = Modifier.size(30.dp),
                     )
                 }
@@ -199,7 +205,7 @@ fun NowPlayingScreen(
                     Text(
                         text = "PLAYING FROM",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.50f),
+                        color = NpInk.copy(alpha = 0.50f),
                         letterSpacing = 1.5.sp,
                         fontSize = 9.sp,
                     )
@@ -207,7 +213,7 @@ fun NowPlayingScreen(
                         text = contextLabel,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = NpInk,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -218,7 +224,7 @@ fun NowPlayingScreen(
                         Icon(
                             Icons.Filled.MoreVert,
                             contentDescription = "More options",
-                            tint = Color.White,
+                            tint = NpInk,
                             modifier = Modifier.size(22.dp),
                         )
                     }
@@ -261,9 +267,10 @@ fun NowPlayingScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .shadow(elevation = 24.dp, shape = RoundedCornerShape(16.dp), ambientColor = accentColor.copy(alpha = 0.4f))
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(gc.surfaceCard),
+                        .glass(RoundedCornerShape(30.dp), alpha = 0.45f, elevation = 18.dp)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFFB38A), Color(0xFFE0607E)))),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (!song?.albumArtUri.isNullOrEmpty()) {
@@ -288,8 +295,8 @@ fun NowPlayingScreen(
                             Icon(
                                 Icons.Filled.MusicNote,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.25f),
-                                modifier = Modifier.size(96.dp),
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(110.dp),
                             )
                         }
                     }
@@ -307,7 +314,7 @@ fun NowPlayingScreen(
                         text = displayTitle,
                         style = MaterialTheme.typography.titleLarge,
                         fontSize = 22.sp,
-                        color = Color.White,
+                        color = NpInk,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -321,7 +328,7 @@ fun NowPlayingScreen(
                         text = displayArtist,
                         style = MaterialTheme.typography.bodyMedium,
                         fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = NpInk.copy(alpha = 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -334,7 +341,7 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = "Favourite",
-                        tint = if (isFavorite) accentColor else Color.White.copy(alpha = 0.6f),
+                        tint = if (isFavorite) accentColor else NpInk.copy(alpha = 0.6f),
                         modifier = Modifier.size(26.dp),
                     )
                 }
@@ -385,7 +392,7 @@ fun NowPlayingScreen(
                         .fillMaxWidth()
                         .height(4.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.25f))
+                        .background(NpInk.copy(alpha = 0.10f))
                 )
                 // Progress fill
                 Box(
@@ -393,7 +400,7 @@ fun NowPlayingScreen(
                         .fillMaxWidth(fraction.coerceAtLeast(0.003f))
                         .height(4.dp)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(GlassGradientH)
                 )
                 // Small thumb dot
                 if (fraction > 0.005f) {
@@ -405,9 +412,10 @@ fun NowPlayingScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(12.dp)
+                                .size(14.dp)
                                 .clip(CircleShape)
-                                .background(Color.White),
+                                .background(Color.White)
+                                .border(3.dp, GlassAccent, CircleShape),
                         )
                     }
                 }
@@ -423,13 +431,13 @@ fun NowPlayingScreen(
                 Text(
                     formatDuration(displayPosition.toLong()),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.50f),
+                    color = NpInk.copy(alpha = 0.50f),
                 )
                 val remaining = (playerState.duration - displayPosition.toLong()).coerceAtLeast(0L)
                 Text(
                     "-${formatDuration(remaining)}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.50f),
+                    color = NpInk.copy(alpha = 0.50f),
                 )
             }
 
@@ -445,33 +453,34 @@ fun NowPlayingScreen(
                 IconButton(onClick = onToggleShuffle, modifier = Modifier.size(44.dp)) {
                     Icon(
                         Icons.Filled.Shuffle, "Shuffle",
-                        tint = if (playerState.shuffleEnabled) accentColor else Color.White.copy(alpha = 0.45f),
+                        tint = if (playerState.shuffleEnabled) accentColor else NpInk.copy(alpha = 0.45f),
                         modifier = Modifier.size(22.dp),
                     )
                 }
                 // Previous
                 IconButton(onClick = onPrevious, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(36.dp))
+                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = NpInk, modifier = Modifier.size(36.dp))
                 }
                 // Play / Pause — large white circle
                 Box(
                     modifier = Modifier
-                        .size(66.dp)
+                        .size(72.dp)
+                        .shadow(14.dp, CircleShape, ambientColor = GlassAccent, spotColor = GlassAccent)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(GlassGradient)
                         .clickable(onClick = onPlayPause),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = "Play/Pause",
-                        tint = if (isNightMode) GhibliNightMid else GhibliForestDeep,
-                        modifier = Modifier.size(34.dp),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
                     )
                 }
                 // Next
                 IconButton(onClick = onNext, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(36.dp))
+                    Icon(Icons.Filled.SkipNext, "Next", tint = NpInk, modifier = Modifier.size(36.dp))
                 }
                 // Repeat
                 IconButton(onClick = onCycleRepeat, modifier = Modifier.size(44.dp)) {
@@ -482,7 +491,7 @@ fun NowPlayingScreen(
                         },
                         contentDescription = "Repeat",
                         tint = when (playerState.repeatMode) {
-                            RepeatMode.OFF -> Color.White.copy(alpha = 0.45f)
+                            RepeatMode.OFF -> NpInk.copy(alpha = 0.45f)
                             else -> accentColor
                         },
                         modifier = Modifier.size(22.dp),
@@ -496,8 +505,7 @@ fun NowPlayingScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.07f))
+                    .glass(RoundedCornerShape(16.dp), alpha = 0.6f, elevation = 0.dp)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -511,7 +519,7 @@ fun NowPlayingScreen(
                 Text(
                     text = audioOutput.label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.70f),
+                    color = NpInk.copy(alpha = 0.70f),
                     fontSize = 11.sp,
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -548,7 +556,7 @@ fun NowPlayingScreen(
                             val s = sleepTimerRemaining / 1000
                             "%d:%02d".format(s / 60, s % 60)
                         } else "Sleep",
-                        tint = if (isSleepActive) accentColor else Color.White.copy(alpha = 0.55f),
+                        tint = if (isSleepActive) accentColor else NpInk.copy(alpha = 0.55f),
                         isActive = isSleepActive,
                         onClick = { showTimerMenu = true },
                     )
@@ -572,7 +580,7 @@ fun NowPlayingScreen(
                     SpotifyActionButton(
                         icon = Icons.Filled.Speed,
                         label = if (isSpeedActive) "${playerState.playbackSpeed}×" else "Speed",
-                        tint = if (isSpeedActive) accentColor else Color.White.copy(alpha = 0.55f),
+                        tint = if (isSpeedActive) accentColor else NpInk.copy(alpha = 0.55f),
                         isActive = isSpeedActive,
                         onClick = { showSpeedMenu = true },
                     )
@@ -613,11 +621,11 @@ fun NowPlayingScreen(
                     .clip(RoundedCornerShape(50.dp))
                     .background(
                         if (showLyrics) accentColor.copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.08f)
+                        else NpInk.copy(alpha = 0.08f)
                     )
                     .border(
                         1.dp,
-                        if (showLyrics) accentColor.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.12f),
+                        if (showLyrics) accentColor.copy(alpha = 0.5f) else NpInk.copy(alpha = 0.12f),
                         RoundedCornerShape(50.dp),
                     )
                     .clickable { showLyrics = !showLyrics }
@@ -630,13 +638,13 @@ fun NowPlayingScreen(
                     Icon(
                         if (showLyrics) Icons.AutoMirrored.Filled.List else Icons.AutoMirrored.Filled.Notes,
                         contentDescription = null,
-                        tint = if (showLyrics) accentColor else Color.White.copy(alpha = 0.6f),
+                        tint = if (showLyrics) accentColor else NpInk.copy(alpha = 0.6f),
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
                         text = "Lyrics",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (showLyrics) accentColor else Color.White.copy(alpha = 0.6f),
+                        color = if (showLyrics) accentColor else NpInk.copy(alpha = 0.6f),
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -685,7 +693,7 @@ fun NowPlayingScreen(
 private fun SpotifyActionButton(
     icon: ImageVector,
     label: String,
-    tint: Color = Color.White.copy(alpha = 0.55f),
+    tint: Color = NpInk.copy(alpha = 0.55f),
     isActive: Boolean = false,
     onClick: () -> Unit,
 ) {
@@ -750,7 +758,7 @@ private fun LyricsView(
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
                 Text(
                     "No lyrics found for this song",
-                    color = Color.White.copy(alpha = 0.5f),
+                    color = NpInk.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
@@ -764,7 +772,7 @@ private fun LyricsView(
             ) {
                 Text(
                     text = plainText,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = NpInk.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.bodyLarge,
                     lineHeight = 28.sp,
                     textAlign = TextAlign.Center,
@@ -800,8 +808,8 @@ private fun LyricsView(
             val textColor by animateColorAsState(
                 targetValue = when {
                     isActive -> accentColor
-                    isPast   -> Color.White.copy(alpha = 0.7f)
-                    else     -> Color.White.copy(alpha = 0.35f)
+                    isPast   -> NpInk.copy(alpha = 0.7f)
+                    else     -> NpInk.copy(alpha = 0.35f)
                 },
                 animationSpec = tween(400),
                 label = "lyric_$index",
@@ -838,3 +846,6 @@ private fun cleanTrackTitle(raw: String?): String {
 
 private fun cleanArtistName(raw: String?): String =
     if (raw.isNullOrBlank() || raw.trim() == "<unknown>") "Unknown Artist" else raw.trim()
+
+/** Text / icon colour on the light glass Now Playing screen. */
+private val NpInk = GlassInk

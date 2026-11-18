@@ -36,21 +36,21 @@ val ManropeFamily = FontFamily(
 val WaLeveTypography = Typography(
     // Display — Fraunces serif for big hero text
     displayLarge = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 36.sp,
         lineHeight = 44.sp,
         color = Cream,
     ),
     displayMedium = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 36.sp,
         color = Cream,
     ),
     displaySmall = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
@@ -58,21 +58,21 @@ val WaLeveTypography = Typography(
     ),
     // Headlines — Fraunces for song titles / section headers
     headlineLarge = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
         color = Cream,
     ),
     headlineMedium = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 20.sp,
         lineHeight = 26.sp,
         color = Cream,
     ),
     headlineSmall = TextStyle(
-        fontFamily = FrauncesFamily,
+        fontFamily = ManropeFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 18.sp,
         lineHeight = 24.sp,

@@ -16,7 +16,7 @@ import com.waleve.player.data.local.entity.SongEntity
         PlaylistEntity::class,
         PlaylistSongCrossRef::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,6 +26,13 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "waleve_db"
+
+        /** v7: "remove from library" without deleting the file. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE songs ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+            }
+        }
 
         /** v6: songs vs audiobooks. Keeps all existing playlists & favorites. */
         val MIGRATION_5_6 = object : Migration(5, 6) {

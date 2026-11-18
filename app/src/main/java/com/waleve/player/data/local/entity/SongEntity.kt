@@ -33,6 +33,8 @@ data class SongEntity(
     @ColumnInfo(defaultValue = "music") val mediaType: String = MEDIA_MUSIC,
     /** 1 when the user moved this item by hand — rescans won't reclassify it */
     @ColumnInfo(defaultValue = "0") val mediaTypeManual: Boolean = false,
+    /** 1 = "removed from library" (file kept on the phone). Rescans keep it hidden. */
+    @ColumnInfo(defaultValue = "0") val isHidden: Boolean = false,
 ) {
     companion object {
         const val MEDIA_MUSIC = "music"

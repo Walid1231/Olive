@@ -66,7 +66,16 @@ class ShareNotificationHelper @Inject constructor(
                 notification.playlistName ?: "Tap to view",
                 "playlist_${notification.notifId}".hashCode(),
             )
-            else -> return // Don't show notifications for friend requests (they have their own tab)
+            InboxNotificationType.FRIEND_REQUEST -> Triple(
+                "👋 ${notification.fromName} wants to be friends",
+                "Open Olive → Friends → Requests to accept",
+                "req_${notification.notifId}".hashCode(),
+            )
+            InboxNotificationType.FRIEND_ACCEPTED -> Triple(
+                "🎉 ${notification.fromName} accepted your request",
+                "You can share songs and audiobooks now",
+                "acc_${notification.notifId}".hashCode(),
+            )
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {

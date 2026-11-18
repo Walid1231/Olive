@@ -3,24 +3,34 @@ package com.waleve.player.presentation.friends
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.waleve.player.data.extractor.MediaExtractor
+import com.waleve.player.data.extractor.MediaFormat
+import com.waleve.player.data.local.dao.SongDao
 import com.waleve.player.domain.model.Friend
 import com.waleve.player.domain.model.FriendRequest
 import com.waleve.player.domain.model.InboxNotification
 import com.waleve.player.domain.model.InboxNotificationType
 import com.waleve.player.domain.repository.FriendRepository
+import com.waleve.player.domain.repository.SendRequestResult
+import com.waleve.player.domain.usecase.ScanMusicUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.withIndex
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import com.waleve.player.data.extractor.MediaExtractor
-import com.waleve.player.data.extractor.MediaFormat
-import com.waleve.player.data.local.dao.SongDao
-import com.waleve.player.domain.usecase.ScanMusicUseCase
 import javax.inject.Inject
 
 sealed class FriendsUiEvent {
@@ -36,6 +46,14 @@ data class SharedSongDownloadProgress(
     val isFailed: Boolean = false,
 )
 
+/** How a person in search results relates to me — decides which button the UI shows. */
+enum class Relation { NONE, FRIEND, REQUEST_SENT, REQUEST_RECEIVED }
+
+data class PersonResult(val person: Friend, val relation: Relation, val requestId: String? = null)
+
+enum class SearchMode { NAME, FRIEND_CODE, EMAIL }
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class FriendsViewModel @Inject constructor(
     private val friendRepository: FriendRepository,
@@ -48,233 +66,210 @@ class FriendsViewModel @Inject constructor(
     private val supabaseStorage: com.waleve.player.data.remote.SupabaseStorage,
 ) : ViewModel() {
 
-    private val _friends = MutableStateFlow<List<Friend>>(emptyList())
-    val friends: StateFlow<List<Friend>> = _friends.asStateFlow()
+    private fun <T> kotlinx.coroutines.flow.Flow<T>.state(initial: T) =
+        this.catch { }.stateIn(viewModelScope, SharingStarted.Eagerly, initial)
 
-    private val _inbox = MutableStateFlow<List<InboxNotification>>(emptyList())
-    val inbox: StateFlow<List<InboxNotification>> = _inbox.asStateFlow()
+    // ── Live data (all follow sign-in / sign-out automatically) ──
+    val friends: StateFlow<List<Friend>> = friendRepository.observeFriends().state(emptyList())
+    val incomingRequests: StateFlow<List<FriendRequest>> = friendRepository.observeIncomingRequests().state(emptyList())
+    val outgoingRequests: StateFlow<List<FriendRequest>> = friendRepository.observeOutgoingRequests().state(emptyList())
+    private val allInbox: StateFlow<List<InboxNotification>> = friendRepository.observeInbox().state(emptyList())
+
+    /** Inbox = shares + "request accepted" notices. Friend requests live in the Requests tab. */
+    val inbox: StateFlow<List<InboxNotification>> = allInbox
+        .map { list -> list.filter { it.type != InboxNotificationType.FRIEND_REQUEST } }
+        .state(emptyList())
+
+    val unreadInboxCount: StateFlow<Int> = inbox.map { l -> l.count { !it.isRead } }.state(0)
 
     private val _searchResults = MutableStateFlow<List<Friend>>(emptyList())
-    val searchResults: StateFlow<List<Friend>> = _searchResults.asStateFlow()
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
 
-    private val _outgoingRequests = MutableStateFlow<List<FriendRequest>>(emptyList())
-    val outgoingRequests: StateFlow<List<FriendRequest>> = _outgoingRequests.asStateFlow()
+    /** Search results annotated with friend / pending status. */
+    val people: StateFlow<List<PersonResult>> = combine(_searchResults, friends, incomingRequests, outgoingRequests) { res, fr, inc, out ->
+        res.map { p ->
+            when {
+                fr.any { it.uid == p.uid } -> PersonResult(p, Relation.FRIEND)
+                out.any { it.toUid == p.uid } -> PersonResult(p, Relation.REQUEST_SENT, out.first { it.toUid == p.uid }.requestId)
+                inc.any { it.fromUid == p.uid } -> PersonResult(p, Relation.REQUEST_RECEIVED, inc.first { it.fromUid == p.uid }.requestId)
+                else -> PersonResult(p, Relation.NONE)
+            }
+        }
+    }.state(emptyList())
 
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    // Detected search mode for UI hint
-    private val _searchMode = MutableStateFlow<SearchMode>(SearchMode.NAME)
+    private val _searchMode = MutableStateFlow(SearchMode.NAME)
     val searchMode: StateFlow<SearchMode> = _searchMode.asStateFlow()
+
+    /** uids / request ids with an action in flight — buttons show a spinner and can't be double-tapped. */
+    private val _busy = MutableStateFlow<Set<String>>(emptySet())
+    val busy: StateFlow<Set<String>> = _busy.asStateFlow()
 
     private val _downloadProgress = MutableStateFlow<Map<String, SharedSongDownloadProgress>>(emptyMap())
     val downloadProgress: StateFlow<Map<String, SharedSongDownloadProgress>> = _downloadProgress.asStateFlow()
 
-    private val _events = MutableSharedFlow<FriendsUiEvent>()
+    private val _events = MutableSharedFlow<FriendsUiEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FriendsUiEvent> = _events.asSharedFlow()
 
     val currentUid: String? get() = auth.currentUser?.uid
-    val currentDisplayName: String? get() = auth.currentUser?.displayName
-    val currentEmail: String? get() = auth.currentUser?.email
     val isSignedIn: Boolean get() = auth.currentUser != null
 
-    // Unread inbox count
-    val unreadCount: Int get() = _inbox.value.count { !it.isRead }
-
-    private var observersStarted = false
-
-    // Track notification IDs we've already shown, to avoid re-notifying on resubscribe
     private val seenNotifIds = mutableSetOf<String>()
 
     init {
-        if (isSignedIn) {
-            startObservers()
-        }
-        // Watch for auth state changes so that if the user signs in after
-        // ViewModel creation, observers are started automatically.
-        auth.addAuthStateListener { firebaseAuth ->
-            if (firebaseAuth.currentUser != null && !observersStarted) {
-                startObservers()
+        // Make sure my profile document exists whenever I'm signed in
+        viewModelScope.launch {
+            friendRepository.observeUid().collect { uid ->
+                if (uid != null) {
+                    val u = auth.currentUser
+                    runCatching { friendRepository.ensureUserProfile(uid, u?.displayName ?: "Unknown", u?.email ?: "") }
+                } else seenNotifIds.clear()
             }
         }
-    }
-
-    private fun startObservers() {
-        if (observersStarted) return
-        observersStarted = true
-        ensureProfile()
-        observeFriends()
-        observeInbox()
-        loadOutgoingRequests()
-    }
-
-    fun refreshAfterSignIn() {
-        observersStarted = false
-        startObservers()
-    }
-
-    private fun ensureProfile() {
-        val uid = currentUid ?: return
-        val name = currentDisplayName ?: "Unknown"
-        val email = currentEmail ?: ""
+        // System notification for genuinely new items (the first snapshot after sign-in is the backlog)
         viewModelScope.launch {
-            try {
-                friendRepository.ensureUserProfile(uid, name, email)
-            } catch (e: Exception) {
-                // Non-fatal — user may be offline
-            }
-        }
-    }
-
-    private fun observeFriends() {
-        viewModelScope.launch {
-            friendRepository.observeFriends()
-                .catch { /* silent */ }
-                .collect { _friends.value = it }
-        }
-    }
-
-    private fun observeInbox() {
-        viewModelScope.launch {
-            friendRepository.observeInbox()
-                .catch { /* silent */ }
-                .collect { items ->
-                    val previousIds = _inbox.value.map { it.notifId }.toSet()
-                    _inbox.value = items
-
-                    // Fire system notifications for truly new, unread share items
-                    items.filter { notif ->
-                        !notif.isRead
-                                && notif.notifId !in previousIds
-                                && notif.notifId !in seenNotifIds
-                                && (notif.type == InboxNotificationType.SONG_SHARED
-                                    || notif.type == InboxNotificationType.PLAYLIST_SHARED)
-                    }.forEach { notif ->
-                        seenNotifIds.add(notif.notifId)
-                        shareNotificationHelper.showShareNotification(notif)
-                    }
+            friendRepository.observeUid()
+                .flatMapLatest { uid -> if (uid == null) emptyFlow() else friendRepository.observeInbox().withIndex() }
+                .catch { }
+                .collect { (index, items) ->
+                    if (index == 0) { items.forEach { seenNotifIds.add(it.notifId) }; return@collect }
+                    items.filter { !it.isRead && seenNotifIds.add(it.notifId) }.forEach { shareNotificationHelper.showShareNotification(it) }
                 }
         }
     }
 
-    private fun loadOutgoingRequests() {
-        viewModelScope.launch {
-            try {
-                _outgoingRequests.value = friendRepository.getOutgoingRequests()
-            } catch (e: Exception) { /* silent */ }
+    /** Kept for callers from the sign-in screen; flows already restart on their own. */
+    fun refreshAfterSignIn() {}
+
+    private fun busy(key: String, on: Boolean) { _busy.value = if (on) _busy.value + key else _busy.value - key }
+    private fun ok(msg: String) { _events.tryEmit(FriendsUiEvent.Success(msg)) }
+    private fun fail(e: Throwable, fallback: String) { _events.tryEmit(FriendsUiEvent.Error(e.message ?: fallback)) }
+
+    // ── Search ──
+    private var searchJob: Job? = null
+
+    fun updateQuery(q: String) {
+        _query.value = q
+        searchJob?.cancel()
+        val trimmed = q.trim()
+        if (trimmed.length < 2) { _searchResults.value = emptyList(); _isSearching.value = false; return }
+        searchJob = viewModelScope.launch {
+            delay(350) // debounce typing
+            smartSearch(trimmed)
         }
     }
 
     /**
-     * Smart search that auto-detects query type:
-     * - Starts with "WLEV-" → Friend Code lookup
-     * - Contains "@" → Email lookup
-     * - Otherwise → Name prefix search
+     * Detects what was typed: friend code (OLV-XXXX / WLEV-XXXX / 4–6 char code), email, or a name.
      */
     fun smartSearch(query: String) {
         val trimmed = query.trim()
-        if (trimmed.length < 2) {
-            _searchResults.value = emptyList()
-            return
-        }
-
-        // Detect mode
+        if (trimmed.length < 2) { _searchResults.value = emptyList(); return }
+        val upper = trimmed.uppercase()
         val mode = when {
-            trimmed.uppercase().startsWith("WLEV-") -> SearchMode.FRIEND_CODE
+            upper.startsWith("OLV-") || upper.startsWith("WLEV-") -> SearchMode.FRIEND_CODE
             trimmed.contains("@") -> SearchMode.EMAIL
             else -> SearchMode.NAME
         }
         _searchMode.value = mode
         _isSearching.value = true
-
         viewModelScope.launch {
             try {
                 val results = when (mode) {
-                    SearchMode.FRIEND_CODE -> {
-                        val friend = friendRepository.searchByFriendCode(trimmed)
-                        if (friend != null) listOf(friend) else emptyList()
-                    }
-                    SearchMode.EMAIL -> {
-                        val friend = friendRepository.searchByEmail(trimmed)
-                        if (friend != null) listOf(friend) else emptyList()
-                    }
+                    SearchMode.FRIEND_CODE -> listOfNotNull(friendRepository.searchByFriendCode(trimmed))
+                    SearchMode.EMAIL -> listOfNotNull(friendRepository.searchByEmail(trimmed))
                     SearchMode.NAME -> {
-                        friendRepository.searchUsers(trimmed)
+                        val byName = friendRepository.searchUsers(trimmed)
+                        // A bare code like "7K3P" also works
+                        val byCode = if (trimmed.length in 4..6 && !trimmed.contains(" ")) friendRepository.searchByFriendCode(trimmed) else null
+                        (listOfNotNull(byCode) + byName).distinctBy { it.uid }
                     }
                 }
                 _searchResults.value = results
             } catch (e: Exception) {
-                _events.emit(FriendsUiEvent.Error("Search failed: ${e.message}"))
+                fail(e, "Search failed")
             }
             _isSearching.value = false
         }
     }
 
-    fun clearSearch() { _searchResults.value = emptyList() }
+    fun clearSearch() { _query.value = ""; _searchResults.value = emptyList() }
 
+    // ── Requests ──
     fun sendFriendRequest(toUid: String, toName: String) {
+        if (toUid in _busy.value) return
+        busy(toUid, true)
         viewModelScope.launch {
-            _isLoading.value = true
-            val result = friendRepository.sendFriendRequest(toUid, toName)
-            result.onSuccess {
-                _events.emit(FriendsUiEvent.Success("Friend request sent to $toName!"))
-                loadOutgoingRequests()
-            }.onFailure { e ->
-                _events.emit(FriendsUiEvent.Error(e.message ?: "Failed to send request"))
-            }
-            _isLoading.value = false
+            friendRepository.sendFriendRequest(toUid, toName)
+                .onSuccess { r -> ok(if (r == SendRequestResult.BECAME_FRIENDS) "You and $toName are now friends! 🎉" else "Request sent to $toName") }
+                .onFailure { fail(it, "Couldn't send the request") }
+            busy(toUid, false)
         }
     }
 
-    fun acceptFriendRequest(notif: InboxNotification) {
-        val requestId = notif.requestId ?: return
+    fun acceptRequest(req: FriendRequest) {
+        if (req.requestId in _busy.value) return
+        busy(req.requestId, true)
         viewModelScope.launch {
-            _isLoading.value = true
-            val result = friendRepository.acceptFriendRequest(requestId, notif.fromUid)
-            result.onSuccess {
-                _events.emit(FriendsUiEvent.Success("You and ${notif.fromName} are now friends!"))
-            }.onFailure { e ->
-                _events.emit(FriendsUiEvent.Error(e.message ?: "Failed to accept"))
-            }
-            _isLoading.value = false
+            friendRepository.acceptFriendRequest(req.requestId, req.fromUid)
+                .onSuccess { ok("You and ${req.fromName} are now friends! 🎉") }
+                .onFailure { fail(it, "Couldn't accept") }
+            busy(req.requestId, false)
         }
     }
 
-    fun declineFriendRequest(notif: InboxNotification) {
-        val requestId = notif.requestId ?: return
+    fun declineRequest(req: FriendRequest) {
+        if (req.requestId in _busy.value) return
+        busy(req.requestId, true)
         viewModelScope.launch {
-            friendRepository.declineFriendRequest(requestId)
-            _events.emit(FriendsUiEvent.Success("Request declined"))
+            friendRepository.declineFriendRequest(req.requestId)
+                .onSuccess { ok("Request declined") }
+                .onFailure { fail(it, "Couldn't decline") }
+            busy(req.requestId, false)
         }
     }
 
-    fun markNotificationRead(notifId: String) {
-        viewModelScope.launch { friendRepository.markNotificationRead(notifId) }
+    fun cancelRequest(requestId: String, toName: String) {
+        if (requestId in _busy.value) return
+        busy(requestId, true)
+        viewModelScope.launch {
+            friendRepository.cancelFriendRequest(requestId)
+                .onSuccess { ok("Request to $toName cancelled") }
+                .onFailure { fail(it, "Couldn't cancel") }
+            busy(requestId, false)
+        }
+    }
+
+    /** Accept straight from search results (when they had already asked me). */
+    fun acceptFromSearch(p: PersonResult) {
+        val reqId = p.requestId ?: return
+        acceptRequest(FriendRequest(requestId = reqId, fromUid = p.person.uid, fromName = p.person.displayName, toUid = currentUid ?: "", toName = ""))
     }
 
     fun removeFriend(friend: Friend) {
+        if (friend.uid in _busy.value) return
+        busy(friend.uid, true)
         viewModelScope.launch {
-            _isLoading.value = true
-            val result = friendRepository.removeFriend(friend.uid)
-            result.onSuccess {
-                _events.emit(FriendsUiEvent.Success("Removed ${friend.displayName} from friends"))
-            }.onFailure { e ->
-                _events.emit(FriendsUiEvent.Error(e.message ?: "Failed to remove friend"))
-            }
-            _isLoading.value = false
+            friendRepository.removeFriend(friend.uid)
+                .onSuccess { ok("Removed ${friend.displayName} from friends") }
+                .onFailure { fail(it, "Couldn't remove friend") }
+            busy(friend.uid, false)
         }
     }
 
-    /** Pending friend requests inbox only */
-    fun friendRequestNotifs(): List<InboxNotification> =
-        _inbox.value.filter { it.type == InboxNotificationType.FRIEND_REQUEST }
-
-    /** Shared playlist notifications inbox only */
-    fun sharedPlaylistNotifs(): List<InboxNotification> =
-        _inbox.value.filter { it.type == InboxNotificationType.PLAYLIST_SHARED }
+    // ── Inbox ──
+    fun markNotificationRead(notifId: String) { viewModelScope.launch { friendRepository.markNotificationRead(notifId) } }
+    fun markAllRead() { viewModelScope.launch { friendRepository.markAllRead(); ok("All marked as read") } }
+    fun deleteNotification(notifId: String) {
+        viewModelScope.launch {
+            friendRepository.deleteNotification(notifId)
+            _downloadProgress.value = _downloadProgress.value - notifId
+        }
+    }
+    fun clearInbox() { viewModelScope.launch { friendRepository.clearInbox(); ok("Inbox cleared") } }
 
     /**
      * Download a shared song / audiobook.

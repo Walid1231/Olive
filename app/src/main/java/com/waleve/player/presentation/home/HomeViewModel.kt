@@ -22,7 +22,16 @@ class HomeViewModel @Inject constructor(
     getRecentlyPlayedUseCase: GetRecentlyPlayedUseCase,
     getMostPlayedUseCase: GetMostPlayedUseCase,
     localMusicRepository: com.waleve.player.domain.repository.LocalMusicRepository,
+    authRepository: com.waleve.player.domain.repository.AuthRepository,
 ) : ViewModel() {
+
+    /** Signed-in profile for the greeting + avatar (null when signed out). */
+    val profile: StateFlow<com.waleve.player.domain.model.UserProfile?> = authRepository.observeAuthState()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val songCount: StateFlow<Int> = localMusicRepository.getAllSongs()
+        .map { it.size }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()

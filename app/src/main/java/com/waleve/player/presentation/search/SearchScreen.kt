@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.search
 
 
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -88,7 +89,7 @@ fun SearchScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent,
-        modifier = modifier.fillMaxSize().background(gc.surface),
+        modifier = modifier.fillMaxSize().statusBarsPadding(),
     ) { paddingValues ->
         Column(
             modifier = Modifier.fillMaxSize().padding(paddingValues),

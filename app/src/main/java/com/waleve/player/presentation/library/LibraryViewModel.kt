@@ -15,6 +15,7 @@ import com.waleve.player.domain.model.SortOption
 import com.waleve.player.domain.model.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -125,6 +126,14 @@ class LibraryViewModel @Inject constructor(
     fun toggleAudiobook(song: Song) {
         viewModelScope.launch { localMusicRepository.setMediaType(song.id, audiobook = !song.isAudiobook) }
     }
+
+    val favoriteCount: StateFlow<Int> = localMusicRepository.getFavorites()
+        .map { it.size }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val hiddenCount: StateFlow<Int> = localMusicRepository.hiddenCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    fun restoreHidden() { viewModelScope.launch { localMusicRepository.restoreHidden() } }
 
     fun selectTab(index: Int) { _selectedTab.value = index }
 

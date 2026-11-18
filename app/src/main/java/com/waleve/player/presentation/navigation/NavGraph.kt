@@ -61,6 +61,9 @@ fun NavGraph(
     ) {
         composable<HomeRoute> {
             val viewModel: HomeViewModel = hiltViewModel()
+            val badgeVm: com.waleve.player.presentation.friends.SocialBadgeViewModel = hiltViewModel()
+            val homeBadge by badgeVm.badge.collectAsStateWithLifecycle()
+            val homePlayer by playerViewModel.playerState.collectAsStateWithLifecycle()
             HomeScreen(
                 viewModel = viewModel,
                 isNightMode = isNightMode,
@@ -69,6 +72,14 @@ fun NavGraph(
                 onSearchClick = { navController.navigate(LibraryRoute) },
                 onSearchOnline = { navController.navigate(SearchRoute) { launchSingleTop = true } },
                 onOpenDownloads = { navController.navigate(DownloadRoute) { launchSingleTop = true } },
+                onOpenLibrary = { tab ->
+                    com.waleve.player.presentation.LibraryTabRequest.tab.value = tab
+                    navController.navigate(LibraryRoute) { launchSingleTop = true }
+                },
+                onOpenFriends = { navController.navigate(FriendsRoute) { launchSingleTop = true } },
+                onOpenProfile = { navController.navigate(ProfileRoute) { launchSingleTop = true } },
+                notificationCount = homeBadge,
+                currentPlayingSongId = homePlayer.currentSong?.id,
             )
         }
 
@@ -76,6 +87,10 @@ fun NavGraph(
             val viewModel: LibraryViewModel = hiltViewModel()
             val playlistVm: PlaylistViewModel = hiltViewModel()
             val currentPlayerState by playerViewModel.playerState.collectAsStateWithLifecycle()
+            val requestedTab by com.waleve.player.presentation.LibraryTabRequest.tab.collectAsStateWithLifecycle()
+            LaunchedEffect(requestedTab) {
+                requestedTab?.let { viewModel.selectTab(it); com.waleve.player.presentation.LibraryTabRequest.tab.value = null }
+            }
             LibraryScreen(
                 viewModel = viewModel,
                 onSongClick = onSongClick,
@@ -219,6 +234,7 @@ fun NavGraph(
                 FriendsScreen(
                     viewModel          = viewModel,
                     isNightMode        = isNightMode,
+                    myProfile          = profile,
                     onOpenSharedPlaylist = { shareId ->
                         navController.navigate(SharedPlaylistRoute(shareId))
                     },
@@ -239,11 +255,18 @@ fun NavGraph(
 
         composable<ProfileRoute> {
             val viewModel: com.waleve.player.presentation.profile.ProfileViewModel = hiltViewModel()
-            com.waleve.player.presentation.profile.ProfileScreen(
-                viewModel   = viewModel,
-                isNightMode = isNightMode,
-                onBack      = { navController.popBackStack() },
-            )
+            val authVm: com.waleve.player.presentation.auth.AuthViewModel = hiltViewModel()
+            val prof by viewModel.profile.collectAsStateWithLifecycle()
+            if (prof == null && !authVm.isSignedIn) {
+                // Not signed in yet → sign in first, then the profile appears here
+                com.waleve.player.presentation.auth.AuthScreen(viewModel = authVm, isNightMode = isNightMode, onSignInSuccess = {})
+            } else {
+                com.waleve.player.presentation.profile.ProfileScreen(
+                    viewModel   = viewModel,
+                    isNightMode = isNightMode,
+                    onBack      = { navController.popBackStack() },
+                )
+            }
         }
 
         composable<SharedPlaylistRoute> { backStackEntry ->

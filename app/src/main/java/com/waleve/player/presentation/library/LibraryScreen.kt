@@ -1,5 +1,31 @@
 package com.waleve.player.presentation.library
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.DropdownMenu
+import com.waleve.player.presentation.components.Artwork
+import com.waleve.player.presentation.components.GlassChip
+import com.waleve.player.presentation.components.GlassGradient
+import com.waleve.player.presentation.components.GlassIconButton
+import com.waleve.player.presentation.components.GlassProgress
+import com.waleve.player.presentation.components.GlassSegmented
+import com.waleve.player.presentation.components.Overline
+import com.waleve.player.presentation.components.SegmentOption
+import com.waleve.player.presentation.components.glass
+import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassDanger
+import com.waleve.player.presentation.theme.GlassInk
+import com.waleve.player.presentation.theme.GlassMuted
+import com.waleve.player.presentation.theme.GlassSub
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
@@ -116,109 +142,89 @@ fun LibraryScreen(
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val audiobookAlbums by viewModel.audiobookAlbums.collectAsStateWithLifecycle()
     val audiobooks by viewModel.audiobooks.collectAsStateWithLifecycle()
+    val favoriteCount by viewModel.favoriteCount.collectAsStateWithLifecycle()
+    val playlistCount = playlistViewModel?.playlists?.collectAsStateWithLifecycle()?.value?.size ?: 0
+    val hiddenCount by viewModel.hiddenCount.collectAsStateWithLifecycle()
 
-    val tabs = listOf("Songs", "Audiobooks", "Albums", "Artists", "Genres", "Folders")
-    val gc   = LocalGhibliColors.current
+    val textPrimary = GlassInk
+    val textMuted = GlassMuted
+    val accentColor = GlassAccent
+    var showSearch by rememberSaveable { mutableStateOf(searchQuery.isNotEmpty()) }
 
-    // Animated colors reacting to mode changes
-    val bgColor by animateColorAsState(
-        targetValue = gc.surface, animationSpec = tween(1200), label = "libraryBg",
-    )
-    val accentColor by animateColorAsState(
-        targetValue = gc.accent, animationSpec = tween(800), label = "accent",
-    )
-    val textPrimary by animateColorAsState(
-        targetValue = gc.textPrimary, animationSpec = tween(800), label = "textPrimary",
-    )
-    val textMuted by animateColorAsState(
-        targetValue = gc.textMuted, animationSpec = tween(800), label = "textMuted",
-    )
-    val cardBg by animateColorAsState(
-        targetValue = gc.surfaceCard, animationSpec = tween(800), label = "cardBg",
-    )
+    // Tabs: 0 Songs · 1 Audiobooks · 2 Albums · 3 Artists · 4 Genres · 5 Folders
+    val isBooks = selectedTab == 1
 
-    Column(
-        modifier = modifier.fillMaxSize().background(bgColor),
-    ) {
-        // ── Search Bar ────────────────────────────────────
-        androidx.compose.material3.OutlinedTextField(
-            value = searchQuery,
-            onValueChange = viewModel::updateSearchQuery,
-            placeholder = { androidx.compose.material3.Text("Search library...", color = textMuted) },
-            leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Search, null, tint = textMuted) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
-                .background(cardBg, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = accentColor,
-                unfocusedBorderColor = textMuted.copy(alpha = 0.5f),
-                cursorColor = accentColor,
-                focusedTextColor = textPrimary,
-                unfocusedTextColor = textPrimary,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedLabelColor = accentColor,
-                unfocusedLabelColor = textMuted,
-                focusedPlaceholderColor = textMuted,
-                unfocusedPlaceholderColor = textMuted,
-            ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-            singleLine = true,
-            textStyle = androidx.compose.material3.LocalTextStyle.current.copy(color = textPrimary),
-        )
-
-        // ── Shortcut chips ────────────────────────────────
+    Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
+        // ── Header ──
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            ShortcutChip(
-                icon  = Icons.Filled.Favorite,
-                label = "Favorites",
-                bgColor = cardBg,
-                accentColor = accentColor,
-                textColor = textPrimary,
-                onClick = onFavoritesClick,
-                modifier = Modifier.weight(1f),
-            )
-            ShortcutChip(
-                icon  = Icons.AutoMirrored.Filled.QueueMusic,
-                label = "Playlists",
-                bgColor = cardBg,
-                accentColor = accentColor,
-                textColor = textPrimary,
-                onClick = onPlaylistsClick,
-                modifier = Modifier.weight(1f),
+            Text("Library", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, modifier = Modifier.weight(1f))
+            GlassIconButton(
+                if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
+                onClick = { if (showSearch) viewModel.updateSearchQuery(""); showSearch = !showSearch },
+                contentDescription = "Search library",
             )
         }
-
-        // ── Tab row ───────────────────────────────────────
-        ScrollableTabRow(
-            selectedTabIndex = selectedTab,
-            containerColor   = Color.Transparent,
-            contentColor     = accentColor,
-            edgePadding      = 16.dp,
-            divider          = {},
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick  = { viewModel.selectTab(index) },
-                    text = {
-                        Text(
-                            text  = title,
-                            color = if (selectedTab == index) accentColor else textMuted,
-                            fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    },
-                )
+        if (showSearch) {
+            Row(
+                Modifier.padding(horizontal = 20.dp).padding(bottom = 10.dp).fillMaxWidth()
+                    .glass(RoundedCornerShape(24.dp), alpha = 0.75f, elevation = 0.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Search, null, tint = GlassSub, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    if (searchQuery.isEmpty()) Text(if (isBooks) "Search audiobooks…" else "Search songs, artists, albums…", color = GlassMuted, fontSize = 14.sp)
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = searchQuery, onValueChange = viewModel::updateSearchQuery, singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(color = GlassInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(GlassAccent),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
+        // ── Songs | Audiobooks ──
+        GlassSegmented(
+            options = listOf(
+                SegmentOption("Songs", Icons.AutoMirrored.Filled.QueueMusic, songs.size),
+                SegmentOption("Audiobooks", Icons.AutoMirrored.Filled.MenuBook, audiobooks.size),
+            ),
+            selected = if (isBooks) 1 else 0,
+            onSelect = { viewModel.selectTab(if (it == 1) 1 else 0) },
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        Spacer(Modifier.height(12.dp))
 
-        // ── Content ───────────────────────────────────────
+        if (!isBooks) {
+            // Favorites / Playlists tiles
+            Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LibraryTile(Icons.Filled.Favorite, "Favorites", "$favoriteCount songs", Color(0xFFFFB3C1), onFavoritesClick, Modifier.weight(1f))
+                LibraryTile(Icons.AutoMirrored.Filled.QueueMusic, "Playlists", "$playlistCount lists", Color(0xFFB9D7FF), onPlaylistsClick, Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
+            // Sub-filters
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0 to "All", 2 to "Albums", 3 to "Artists", 4 to "Genres", 5 to "Folders").forEach { (i, l) ->
+                    GlassChip(l, selectedTab == i, { viewModel.selectTab(i) })
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        if (hiddenCount > 0 && selectedTab == 0) {
+            Text(
+                "$hiddenCount hidden · Show again",
+                color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp).clickable { viewModel.restoreHidden() },
+            )
+        }
+
+        // ── Content ──
         when (selectedTab) {
             0 -> SongsTab(songs, onSongClick, viewModel, accentColor, textPrimary, textMuted, currentPlayingSongId, playlistViewModel)
             1 -> AudiobooksTab(audiobookAlbums, audiobooks, onAlbumClick, onSongClick, viewModel, textPrimary, textMuted, currentPlayingSongId)
@@ -226,6 +232,23 @@ fun LibraryScreen(
             3 -> ArtistsTab(artists, onArtistClick)
             4 -> GenresTab(genres, onGenreClick, textPrimary)
             5 -> FoldersTab(folders, onFolderClick, textPrimary)
+        }
+    }
+}
+
+@Composable
+private fun LibraryTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.glass(RoundedCornerShape(20.dp)).clickable(onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = GlassInk.copy(alpha = 0.85f), modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+            Text(sub, color = GlassSub, fontSize = 11.5.sp)
         }
     }
 }
@@ -272,6 +295,7 @@ private fun SongsTab(
     var songIdForPlaylist by remember { mutableStateOf<Long?>(null) }
     var songToShare by remember { mutableStateOf<Song?>(null) }
     val shareVm: SharePlaylistViewModel = hiltViewModel()
+    val deleteSongs = com.waleve.player.presentation.components.rememberSongDeleter()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -429,7 +453,7 @@ private fun SongsTab(
                         onFavoriteClick = { viewModel.toggleFavorite(song.id) },
                         onAddToPlaylist = { songIdForPlaylist = song.id },
                         onShareClick = { songToShare = song },
-                        onDeleteClick = { viewModel.deleteSong(song.id) },
+                        onDeleteClick = { deleteSongs(listOf(song)) },
                         onToggleAudiobook = { viewModel.toggleAudiobook(song) },
                         isPlaying = song.id == currentPlayingSongId,
                     )
@@ -542,18 +566,16 @@ private fun AudiobooksTab(
     textMuted: Color,
     currentPlayingSongId: Long?,
 ) {
-    val gc = LocalGhibliColors.current
     var bookToShare by remember { mutableStateOf<Song?>(null) }
+    val deleteSongs = com.waleve.player.presentation.components.rememberSongDeleter()
+    var filter by rememberSaveable { mutableStateOf(0) } // 0 all · 1 in progress · 2 not started · 3 finished
     bookToShare?.let { song ->
         val shareVm: SharePlaylistViewModel = hiltViewModel()
         val friends by shareVm.friends.collectAsStateWithLifecycle()
         val isSharing by shareVm.isSharing.collectAsStateWithLifecycle()
         val uploadProgress by shareVm.uploadProgress.collectAsStateWithLifecycle()
         ShareSongBottomSheet(
-            song = song,
-            friends = friends,
-            isSharing = isSharing,
-            uploadProgress = uploadProgress,
+            song = song, friends = friends, isSharing = isSharing, uploadProgress = uploadProgress,
             onShare = { uids -> shareVm.shareSong(song, uids) },
             onDismiss = { bookToShare = null },
         )
@@ -570,55 +592,109 @@ private fun AudiobooksTab(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Put files in an \"Audiobooks\" folder, download as Audiobook, or use ⋮ → Move to Audiobooks on any song.",
-                style = MaterialTheme.typography.bodySmall,
-                color = textMuted,
+                style = MaterialTheme.typography.bodySmall, color = textMuted,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
         return
     }
+    // Per-book chapters + progress (chapters you've played / total)
+    val byBook = remember(files) { files.groupBy { it.album to it.artist } }
+    fun chaptersOf(b: com.waleve.player.domain.model.Album) = byBook[b.name to b.artist].orEmpty()
+    fun progressOf(b: com.waleve.player.domain.model.Album): Float { val ch = chaptersOf(b); return if (ch.isEmpty()) 0f else ch.count { it.playCount > 0 }.toFloat() / ch.size }
+    val resume = remember(files) { files.filter { it.lastPlayed != null }.maxByOrNull { it.lastPlayed ?: 0L } }
+    val shown = books.filter { b ->
+        val p = progressOf(b)
+        when (filter) { 1 -> p > 0f && p < 1f; 2 -> p == 0f; 3 -> p >= 1f; else -> true }
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        resume?.let { ch ->
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                val book = files.filter { it.album == ch.album && it.artist == ch.artist }
+                Row(
+                    Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).clickable {
+                        val i = book.indexOfFirst { it.id == ch.id }; onSongClick(book, i.coerceAtLeast(0))
+                    }.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Artwork(ch.albumArtUri, Modifier.size(60.dp), seed = ch.album.hashCode())
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Overline("Pick up where you left")
+                        Text(ch.album.ifBlank { ch.title }, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Chapter ${book.indexOfFirst { it.id == ch.id } + 1} of ${book.size}  ·  ${ch.title}", color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(GlassGradient), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.PlayArrow, "Resume", tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Text(
-                "${books.size} book${if (books.size == 1) "" else "s"} · ${files.size} file${if (files.size == 1) "" else "s"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = textMuted,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("All", "In progress", "Not started", "Finished").forEachIndexed { i, l -> GlassChip(l, filter == i, { filter = i }) }
+            }
         }
-        items(books, key = { "book_${it.name}_${it.artist}" }) { book ->
-            AlbumCard(album = book, onClick = { onBookClick(book.name, book.artist) })
+        items(shown, key = { "book_${it.name}_${it.artist}" }) { book ->
+            val chapters = chaptersOf(book)
+            val p = progressOf(book)
+            var menu by remember { mutableStateOf(false) }
+            Column(
+                Modifier.glass(RoundedCornerShape(22.dp)).clickable { onBookClick(book.name, book.artist) }.padding(10.dp),
+            ) {
+                Box {
+                    Artwork(book.artUri, Modifier.fillMaxWidth().aspectRatio(1f), corner = 16.dp, seed = book.name.hashCode())
+                    Box(Modifier.align(Alignment.TopEnd)) {
+                        Box(
+                            Modifier.padding(6.dp).size(30.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f)).clickable { menu = true },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Filled.MoreVert, "Book options", tint = GlassInk, modifier = Modifier.size(18.dp)) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
+                            DropdownMenuItem(text = { Text("Play from start") }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null, tint = GlassAccent) },
+                                onClick = { menu = false; if (chapters.isNotEmpty()) onSongClick(chapters, 0) })
+                            DropdownMenuItem(text = { Text("Share with friend") }, leadingIcon = { Icon(Icons.Filled.Share, null, tint = GlassAccent) },
+                                onClick = { menu = false; chapters.firstOrNull()?.let { bookToShare = it } })
+                            DropdownMenuItem(text = { Text("Move to Songs") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = GlassAccent) },
+                                onClick = { menu = false; chapters.forEach { viewModel.toggleAudiobook(it) } })
+                            DropdownMenuItem(text = { Text("Delete book", color = GlassDanger) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = GlassDanger) },
+                                onClick = { menu = false; deleteSongs(chapters) })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(book.name.ifBlank { "Untitled" }, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${chapters.size} chapter${if (chapters.size == 1) "" else "s"} · ${formatHours(chapters.sumOf { it.duration })}", color = GlassSub, fontSize = 11.5.sp, maxLines = 1)
+                Spacer(Modifier.height(6.dp))
+                GlassProgress(p, height = 4.dp)
+            }
         }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Text(
-                "All chapters",
-                style = MaterialTheme.typography.titleSmall,
-                color = textPrimary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 4.dp, top = 12.dp),
-            )
+            Text("All chapters", style = MaterialTheme.typography.titleSmall, color = textPrimary, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
         }
-        items(
-            files,
-            key = { "abfile_${it.id}" },
-            span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
-        ) { song ->
+        items(files, key = { "abfile_${it.id}" }, span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { song ->
             SongListItem(
                 song = song,
                 onClick = { onSongClick(files, files.indexOf(song)) },
                 onFavoriteClick = { viewModel.toggleFavorite(song.id) },
                 onAddToPlaylist = {},
                 onShareClick = { bookToShare = song },
+                onDeleteClick = { deleteSongs(listOf(song)) },
                 onToggleAudiobook = { viewModel.toggleAudiobook(song) },
                 isPlaying = song.id == currentPlayingSongId,
             )
         }
     }
+}
+
+private fun formatHours(ms: Long): String {
+    val m = ms / 60_000
+    return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
 }
 
 // ── Albums Tab ────────────────────────────────────────────────────────────────

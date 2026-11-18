@@ -5,48 +5,44 @@ import com.waleve.player.domain.model.FriendRequest
 import com.waleve.player.domain.model.InboxNotification
 import kotlinx.coroutines.flow.Flow
 
+/** Result of "Add friend": a new request, or instant friendship because they had already asked you. */
+enum class SendRequestResult { SENT, BECAME_FRIENDS }
+
 /**
- * Repository interface for all friend-related Firebase operations.
+ * Everything social: profiles, friend requests (send → accept / decline / cancel), friends, inbox.
+ * All observe* flows follow sign-in / sign-out automatically.
  */
 interface FriendRepository {
+    /** Emits the signed-in uid, or null when signed out. */
+    fun observeUid(): Flow<String?>
 
-    /** Ensure this user's profile exists in Firestore (called on app start). */
     suspend fun ensureUserProfile(uid: String, displayName: String, email: String)
 
-    /** Search users by display name (prefix search) — excludes the current user. */
     suspend fun searchUsers(query: String): List<Friend>
-
-    /** Find a user by their unique Friend Code (e.g. "WLEV-A3X9"). */
+    /** Friend codes look like OLV-AB12 (older accounts: WLEV-AB12). The prefix is optional. */
     suspend fun searchByFriendCode(code: String): Friend?
-
-    /** Find a user by their email address. */
     suspend fun searchByEmail(email: String): Friend?
 
-    /** Send a friend request from the current user to [toUid]. */
-    suspend fun sendFriendRequest(toUid: String, toName: String): Result<Unit>
-
-    /** Accept an incoming friend request — updates both users' friendIds. */
+    suspend fun sendFriendRequest(toUid: String, toName: String): Result<SendRequestResult>
     suspend fun acceptFriendRequest(requestId: String, fromUid: String): Result<Unit>
-
-    /** Decline a friend request — marks it declined in Firestore. */
     suspend fun declineFriendRequest(requestId: String): Result<Unit>
-
-    /** Observe the current user's confirmed friends list in real-time. */
-    fun observeFriends(): Flow<List<Friend>>
-
-    /** Observe the current user's inbox (friend requests + shared playlists) in real-time. */
-    fun observeInbox(): Flow<List<InboxNotification>>
-
-    /** Mark an inbox notification as read. */
-    suspend fun markNotificationRead(notifId: String)
-
-    /** Get all pending outgoing friend requests sent by the current user. */
-    suspend fun getOutgoingRequests(): List<FriendRequest>
-
-    /** Remove a friend from both users' friend lists. */
+    /** Take back a request you sent that hasn't been answered yet. */
+    suspend fun cancelFriendRequest(requestId: String): Result<Unit>
     suspend fun removeFriend(friendUid: String): Result<Unit>
 
-    /** Share a single song directly to friends' inboxes. */
+    fun observeFriends(): Flow<List<Friend>>
+    fun observeIncomingRequests(): Flow<List<FriendRequest>>
+    fun observeOutgoingRequests(): Flow<List<FriendRequest>>
+    fun observeInbox(): Flow<List<InboxNotification>>
+
+    suspend fun markNotificationRead(notifId: String)
+    suspend fun markAllRead()
+    suspend fun deleteNotification(notifId: String)
+    /** Delete every inbox item (friend-request notices are handled by the Requests tab). */
+    suspend fun clearInbox()
+
+    suspend fun getOutgoingRequests(): List<FriendRequest>
+
     suspend fun shareSong(
         song: com.waleve.player.domain.model.Song,
         friendUids: List<String>,

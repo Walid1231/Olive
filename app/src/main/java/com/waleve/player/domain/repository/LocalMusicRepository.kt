@@ -27,4 +27,10 @@ interface LocalMusicRepository {
     suspend fun updatePlayCount(songId: Long)
     suspend fun insertSong(song: Song): Long
     suspend fun deleteSong(songId: Long)
+    /** Hide from the library (file stays on the phone) and take out of playlists. */
+    suspend fun removeFromLibrary(songIds: List<Long>)
+    /** Forget songs whose files were deleted. */
+    suspend fun forgetSongs(songIds: List<Long>)
+    fun hiddenCount(): Flow<Int>
+    suspend fun restoreHidden()
 }
