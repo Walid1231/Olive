@@ -15,6 +15,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -111,7 +113,11 @@ class AppUpdateChecker @Inject constructor(
             // Only show update if remote version is strictly newer
             if (isNewerVersion(remoteVersion, localVersion)) {
                 // Find the APK asset
-                val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+                // 64-bit phones get Olive.apk, old 32-bit phones Olive-32bit.apk
+                val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
+                val apks = release.assets.filter { it.name.endsWith(".apk") }
+                val apkAsset = (if (is64) apks.firstOrNull { it.name == "Olive.apk" } else apks.firstOrNull { it.name == "Olive-32bit.apk" })
+                    ?: apks.firstOrNull()
                 if (apkAsset != null) {
                     return@withContext UpdateInfo(
                         version = remoteVersion,
@@ -150,63 +156,98 @@ class AppUpdateChecker @Inject constructor(
         return false // equal or unparseable → no update
     }
 
-    fun downloadApk(url: String, version: String = "update"): Flow<DownloadState> = flow {
-        emit(DownloadState.Downloading(0f))
-        
+    /**
+     * Downloads the update with 4 parallel connections (each grabs one part of the file).
+     * On slow links GitHub limits each connection, so 4 at once is usually 2–4× faster.
+     * Falls back to a single connection if the server doesn't support parts.
+     */
+    fun downloadApk(url: String, version: String = "update"): Flow<DownloadState> = kotlinx.coroutines.flow.channelFlow {
+        send(DownloadState.Downloading(0f))
+        val client = okHttpClient.newBuilder()
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
         try {
-            val request = Request.Builder().url(url).build()
-            val response = okHttpClient.newCall(request).execute()
-            
-            if (!response.isSuccessful) {
-                emit(DownloadState.Error("Failed to download: HTTP ${response.code}"))
-                return@flow
-            }
-            
-            val body = response.body ?: run {
-                emit(DownloadState.Error("Empty response body"))
-                return@flow
-            }
-            
-            val contentLength = body.contentLength()
-            val updatesDir = File(context.cacheDir, "updates")
-            if (!updatesDir.exists()) {
-                updatesDir.mkdirs()
-            }
-            
-            // Drop older downloads, keep only this version
-            updatesDir.listFiles()?.forEach { it.delete() }
+            val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+            updatesDir.listFiles()?.forEach { it.delete() }   // keep only this version
             val apkFile = File(updatesDir, "olive-$version.apk")
-            
-            val inputStream = body.byteStream()
-            val outputStream = FileOutputStream(apkFile)
-            
-            val buffer = ByteArray(8 * 1024)
-            var bytesCopied = 0L
-            var read: Int
-            var lastProgress = 0f
-            
-            while (inputStream.read(buffer).also { read = it } >= 0) {
-                outputStream.write(buffer, 0, read)
-                bytesCopied += read
-                
-                if (contentLength > 0) {
-                    val progress = bytesCopied.toFloat() / contentLength.toFloat()
-                    if (progress - lastProgress >= 0.01f || progress == 1f) {
-                        emit(DownloadState.Downloading(progress))
-                        lastProgress = progress
+
+            // Probe: follow the redirect once, learn the size and whether parts are allowed
+            val probe = client.newCall(Request.Builder().url(url).header("Range", "bytes=0-0").build()).execute()
+            val finalUrl = probe.request.url.toString()
+            val total = probe.header("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: -1L
+            val ranged = probe.code == 206 && total > 0
+            probe.close()
+
+            val done = java.util.concurrent.atomic.AtomicLong(0)
+            var lastSent = 0f
+            suspend fun report() {
+                if (total <= 0) return
+                val p = done.get().toFloat() / total
+                if (p - lastSent >= 0.01f) { lastSent = p; send(DownloadState.Downloading(p.coerceAtMost(0.999f))) }
+            }
+
+            if (!ranged) {
+                // Single connection
+                client.newCall(Request.Builder().url(finalUrl).build()).execute().use { resp ->
+                    if (!resp.isSuccessful) { send(DownloadState.Error("Failed to download: HTTP ${resp.code}")); return@channelFlow }
+                    val body = resp.body ?: run { send(DownloadState.Error("Empty response")); return@channelFlow }
+                    val len = body.contentLength()
+                    body.byteStream().use { input ->
+                        FileOutputStream(apkFile).use { out ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = input.read(buf); if (n < 0) break
+                                out.write(buf, 0, n); done.addAndGet(n.toLong())
+                                if (len > 0) { val p = done.get().toFloat() / len; if (p - lastSent >= 0.01f) { lastSent = p; send(DownloadState.Downloading(p)) } }
+                            }
+                        }
                     }
                 }
+            } else {
+                java.io.RandomAccessFile(apkFile, "rw").use { it.setLength(total) }
+                val parts = 4
+                val chunk = total / parts
+                kotlinx.coroutines.coroutineScope {
+                    (0 until parts).map { i ->
+                        val from = i * chunk
+                        val to = if (i == parts - 1) total - 1 else from + chunk - 1
+                        launch(Dispatchers.IO) {
+                            var pos = from
+                            var attempts = 0
+                            while (pos <= to) {
+                                try {
+                                    client.newCall(Request.Builder().url(finalUrl).header("Range", "bytes=$pos-$to").build()).execute().use { resp ->
+                                        if (resp.code != 206) throw java.io.IOException("HTTP ${resp.code}")
+                                        java.io.RandomAccessFile(apkFile, "rw").use { raf ->
+                                            raf.seek(pos)
+                                            resp.body!!.byteStream().use { input ->
+                                                val buf = ByteArray(64 * 1024)
+                                                while (true) {
+                                                    val n = input.read(buf); if (n < 0) break
+                                                    raf.write(buf, 0, n); pos += n; done.addAndGet(n.toLong())
+                                                    report()
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (e: java.io.IOException) {
+                                    // Resume this part where it stopped (up to 5 tries)
+                                    if (++attempts > 5) throw e
+                                    kotlinx.coroutines.delay(1_500L * attempts)
+                                }
+                            }
+                        }
+                    }.joinAll()
+                }
+                if (apkFile.length() != total || done.get() < total) {
+                    send(DownloadState.Error("Download incomplete — tap Try again")); return@channelFlow
+                }
             }
-            
-            outputStream.flush()
-            outputStream.close()
-            inputStream.close()
-            
-            emit(DownloadState.Success(apkFile))
-            
+            send(DownloadState.Success(apkFile))
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading APK", e)
-            emit(DownloadState.Error(e.message ?: "Unknown error"))
+            send(DownloadState.Error(e.message ?: "Download failed — check your internet"))
         }
     }.flowOn(Dispatchers.IO)
     

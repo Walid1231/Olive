@@ -25,8 +25,8 @@ android {
         applicationId = "com.waleve.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.4.0"
+        versionCode = 12
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -39,9 +39,16 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
         buildConfigField("String", "SUPABASE_BUCKET", "\"${secret("SUPABASE_BUCKET").ifEmpty { "olive-shares" }}\"")
 
-        ndk {
-            // yt-dlp / FFmpeg native binaries — phones only need ARM
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    }
+
+    // One APK per phone type instead of one fat APK with both: the 64-bit one (almost every
+    // phone since 2017) is ~45 MB smaller. Old 32-bit phones get Olive-32bit.apk.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
 
@@ -95,7 +102,8 @@ android {
     applicationVariants.all {
         outputs.all {
             val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            outputImpl.outputFileName = "Olive.apk"
+            val abi = outputImpl.getFilter(com.android.build.OutputFile.ABI)
+            outputImpl.outputFileName = if (abi == "armeabi-v7a") "Olive-32bit.apk" else "Olive.apk"
         }
     }
 }

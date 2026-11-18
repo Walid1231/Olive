@@ -65,12 +65,14 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: gradle :app:assembleRelease --stacktrace
 
-      - name: Find APK
+      - name: Find APKs
         id: apk
         run: |
-          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          APK=$(find app/build/outputs/apk/release -name 'Olive.apk' | head -1)
+          APK32=$(find app/build/outputs/apk/release -name 'Olive-32bit.apk' | head -1)
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          ls -la "$APK"
+          echo "path32=$APK32" >> "$GITHUB_OUTPUT"
+          ls -la "$APK" "$APK32"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -80,3 +82,10 @@ jobs:
           make_latest: 'true'
           body_path: RELEASE_NOTES.md
           files: ${{ steps.apk.outputs.path }}
+
+      # Uploaded second so Olive.apk stays the first asset (older in-app updaters take the first one)
+      - name: Add 32-bit APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ steps.apk.outputs.path32 }}
