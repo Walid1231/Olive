@@ -379,12 +379,15 @@ class FriendRepositoryImpl @Inject constructor(
             // and the last one to do so deletes it from Supabase (see ShareAutoSaver).
             var transferId: String? = null
             if (fileUrl != null && fileSize > 0) {
-                val t = firestore.collection("transfers").document()
-                t.set(mapOf(
-                    "fromUid" to uid, "url" to fileUrl, "pending" to friendUids.distinct(),
-                    "title" to song.title, "createdAt" to System.currentTimeMillis(),
-                )).await()
-                transferId = t.id
+                // Not fatal: if the rules aren't published yet, sharing still works (file just isn't auto-cleaned)
+                runCatching {
+                    val t = firestore.collection("transfers").document()
+                    t.set(mapOf(
+                        "fromUid" to uid, "url" to fileUrl, "pending" to friendUids.distinct(),
+                        "title" to song.title, "createdAt" to System.currentTimeMillis(),
+                    )).await()
+                    transferId = t.id
+                }
             }
 
             friendUids.forEach { friendUid ->

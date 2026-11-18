@@ -1,9 +1,15 @@
-## Olive 1.3.4 · New widget 🎛️
+## Olive 1.4.0 · Share & Together+
 
-- **Redesigned home-screen widget**: the song's cover fills the whole widget.
-  - Top: a glass pill with a small round cover, the title and the artist, plus **Share** and **❤ Favourite** buttons.
-  - Bottom: elapsed and remaining time that tick live, a white progress bar, and round **previous · play/pause · next** buttons.
-- Tap the cover or the title to open Olive. **Share** sends the song (with its YouTube link when there is one).
-- The widget is square now (3×3). You can still resize it.
+### Songs from friends save themselves
+- When a friend sends you a song or audiobook file, Olive saves it to your phone by itself as soon as the app is open, and it shows up in your library.
+- The inbox shows **"On your phone"** with a Play button that plays your local copy.
+- After everyone it was sent to has saved it, the file is **deleted from the cloud** automatically, so the free storage never fills up. Files nobody picked up are removed after 14 days.
+- Switch: **Friends → Friends tab → Auto-save songs friends send**.
 
-If you already placed the widget, remove it and add it again so it takes the new size (long-press → Remove, then Library → ⚙ → Add widget).
+### Listen together
+- **Everyone can control**: the host can let friends play, pause, skip and seek. Guests can even play any song from their own phone, and it plays for the whole group.
+- **Chat inside the session**: messages plus quick ❤️🔥😂😭👏🎶 reactions. The bar above the mini player shows 💬 unread messages.
+- **Chats are kept on your phone**. The cloud only passes each message along, and the host's phone wipes them from the cloud when the session ends. Earlier chats are under **Listen together → Earlier chats**.
+- If your sleep timer stops the music during a session, you leave the session (instead of the music starting again).
+
+> **Owner setup:** publish the updated Firestore rules (`docs/firestore.rules`): new `transfers` and session `messages` rules, and the "Everyone can control" rule.

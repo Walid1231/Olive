@@ -329,6 +329,7 @@ class FriendsViewModel @Inject constructor(
                     notif.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { songDao.updateAlbumArtUri(song.id, it) }
                 }
                 updateDownloadProgress(notif.notifId, 100f, "Done!", isComplete = true)
+                shareAutoSaver.markSaved(notif.notifId, notif.transferId, saved)
                 _events.emit(FriendsUiEvent.Success("'$label' saved to ${if (asAudiobook) "Audiobooks" else "Songs"}!"))
             }
             return

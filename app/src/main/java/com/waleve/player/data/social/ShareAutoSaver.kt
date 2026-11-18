@@ -117,6 +117,19 @@ class ShareAutoSaver @Inject constructor(
         }
     }
 
+    /** Saved by hand (Download button): record it and clean up the upload the same way. */
+    fun markSaved(notifId: String, transferId: String?, path: String) {
+        val me = auth.currentUser?.uid ?: return
+        tried += notifId
+        scope.launch {
+            runCatching {
+                firestore.collection("users").document(me).collection("inbox").document(notifId)
+                    .update(mapOf("savedPath" to path, "savedAt" to System.currentTimeMillis())).await()
+            }
+            transferId?.let { finishTransfer(me, it) }
+        }
+    }
+
     /** I've saved it → take me off the list; if I was the last one, delete the upload. */
     private suspend fun finishTransfer(me: String, id: String) {
         val ref = firestore.collection("transfers").document(id)
