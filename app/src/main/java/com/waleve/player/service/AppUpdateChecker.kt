@@ -63,6 +63,31 @@ class AppUpdateChecker @Inject constructor(
         private const val API_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     }
 
+    /** The newer release waiting to be installed (shared by every screen). */
+    val available = kotlinx.coroutines.flow.MutableStateFlow<UpdateInfo?>(null)
+
+    /** A downloaded APK waiting for the "install unknown apps" permission. */
+    var pendingInstall: File? = null
+
+    fun canInstall(): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+
+    /** Opens Settings → "Install unknown apps" for Olive (one-time switch). */
+    fun openInstallPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
+    /** Already-downloaded APK for [info], if complete. */
+    fun downloadedFor(info: UpdateInfo): File? {
+        val f = File(File(context.cacheDir, "updates"), "olive-${info.version}.apk")
+        return f.takeIf { it.exists() && (info.fileSize <= 0 || it.length() == info.fileSize) }
+    }
+
     suspend fun checkForUpdate(): UpdateInfo? = kotlinx.coroutines.withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -125,7 +150,7 @@ class AppUpdateChecker @Inject constructor(
         return false // equal or unparseable → no update
     }
 
-    fun downloadApk(url: String): Flow<DownloadState> = flow {
+    fun downloadApk(url: String, version: String = "update"): Flow<DownloadState> = flow {
         emit(DownloadState.Downloading(0f))
         
         try {
@@ -148,10 +173,9 @@ class AppUpdateChecker @Inject constructor(
                 updatesDir.mkdirs()
             }
             
-            val apkFile = File(updatesDir, "update.apk")
-            if (apkFile.exists()) {
-                apkFile.delete()
-            }
+            // Drop older downloads, keep only this version
+            updatesDir.listFiles()?.forEach { it.delete() }
+            val apkFile = File(updatesDir, "olive-$version.apk")
             
             val inputStream = body.byteStream()
             val outputStream = FileOutputStream(apkFile)

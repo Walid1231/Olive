@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.together
 
 import android.widget.Toast
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -258,7 +259,7 @@ fun GroupPlaylistsScreen(onBack: () -> Unit, onOpen: (String) -> Unit, vm: Group
             }
             else -> items(l, key = { it.id }) { p ->
                 Row(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.75f).clickable { onOpen(p.id) }.padding(12.dp),
+                    Modifier.springClick { onOpen(p.id) }.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.75f).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Artwork(p.tracks.firstOrNull { it.artUrl != null }?.artUrl, Modifier.size(58.dp), corner = 14.dp, seed = p.name.hashCode())
@@ -387,7 +388,7 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
         if (pl.tracks.isEmpty()) {
             item {
                 Column(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.55f).clickable { picking = true }.padding(24.dp),
+                    Modifier.springClick { picking = true }.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.55f).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = GlassAccent, modifier = Modifier.size(34.dp))
@@ -400,8 +401,8 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
             item { Overline("Songs", GlassSub) }
             itemsIndexed(pl.tracks, key = { _, t -> t.key }) { i, t ->
                 Row(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp), alpha = 0.7f)
-                        .clickable(enabled = t.playable) { vm.play(pl, i) }.padding(10.dp),
+                    Modifier.springClick(enabled = t.playable) { vm.play(pl, i) }.fillMaxWidth().glass(RoundedCornerShape(18.dp), alpha = 0.7f)
+                        .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Artwork(t.artUrl, Modifier.size(48.dp), corner = 12.dp, seed = t.title.hashCode())

@@ -1,7 +1,21 @@
 package com.waleve.player.presentation.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -98,6 +112,42 @@ fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
     )
 }
 
+/**
+ * The navigation-dock feel for every tappable thing: a springy press (shrinks a little and
+ * bounces back) plus a light haptic tick. No grey ripple, so glass stays clean.
+ */
+fun Modifier.springClick(
+    enabled: Boolean = true,
+    haptic: Boolean = true,
+    pressedScale: Float? = null,
+    onClick: () -> Unit,
+): Modifier = composed {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    // Small things squeeze more, big cards / rows only a touch (same ~6 dp travel for all)
+    var sizePx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val target = pressedScale ?: run {
+        if (sizePx <= 0) 0.95f else (1f - with(density) { 6.dp.toPx() } / sizePx).coerceIn(0.92f, 0.985f)
+    }
+    val scale by animateFloatAsState(
+        if (pressed && enabled) target else 1f,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "press",
+    )
+    val hf = LocalHapticFeedback.current
+    this
+        .onSizeChanged { sizePx = maxOf(it.width, it.height) }
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .clickable(interactionSource = source, indication = null, enabled = enabled) {
+            if (haptic) hf.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        }
+}
+
+/** Bright top-left → soft bottom-right hairline: the "lit edge" of real glass. */
+val GlassEdge: Brush = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.9f)))
+
 /** Frosted-glass surface: translucent white + bright hairline + soft shadow. */
 fun Modifier.glass(
     shape: Shape = RoundedCornerShape(22.dp),
@@ -108,7 +158,7 @@ fun Modifier.glass(
     .then(if (elevation > 0.dp) Modifier.shadow(elevation, shape, ambientColor = Color(0x1423305A), spotColor = Color(0x1423305A)) else Modifier)
     .clip(shape)
     .background(Color.White.copy(alpha = alpha))
-    .then(if (border) Modifier.border(1.dp, GlassStroke, shape) else Modifier)
+    .then(if (border) Modifier.border(1.dp, GlassEdge, shape) else Modifier)
 
 @Composable
 fun GlassCard(
@@ -121,8 +171,8 @@ fun GlassCard(
 ) {
     Column(
         modifier = modifier
+            .then(if (onClick != null) Modifier.springClick(pressedScale = 0.98f, haptic = false, onClick = onClick) else Modifier)
             .glass(shape, alpha)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(padding),
         content = content,
     )
@@ -133,11 +183,11 @@ fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: M
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = modifier
+            .springClick(onClick = onClick)
             .then(
-                if (selected) Modifier.clip(shape).background(GlassGradientH)
+                if (selected) Modifier.shadow(6.dp, shape, ambientColor = GlassAccent, spotColor = GlassAccent).clip(shape).background(GlassGradientH)
                 else Modifier.glass(shape, alpha = 0.6f, elevation = 0.dp)
             )
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -167,27 +217,28 @@ fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) 
     ) {
         options.forEachIndexed { i, opt ->
             val on = i == selected
-            val bg by animateColorAsState(if (on) Color.White.copy(alpha = 0.95f) else Color.Transparent, tween(220), label = "seg")
+            val pill by animateFloatAsState(if (on) 1f else 0f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow), label = "seg")
+            val fg by animateColorAsState(if (on) Color.White else GlassMuted, tween(200), label = "segFg")
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .then(if (on) Modifier.shadow(4.dp, RoundedCornerShape(18.dp), ambientColor = Color(0x1423305A), spotColor = Color(0x1423305A)) else Modifier)
+                    .springClick(enabled = !on, onClick = { onSelect(i) })
+                    .graphicsLayer { val k = 0.96f + 0.04f * pill; scaleX = k; scaleY = k }
                     .clip(RoundedCornerShape(18.dp))
-                    .background(bg)
-                    .clickable { onSelect(i) }
+                    .background(GlassGradientH, alpha = pill)
                     .padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                opt.icon?.let { Icon(it, null, tint = if (on) GlassAccent else GlassMuted, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-                Text(opt.label, color = if (on) GlassInk else GlassMuted, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
+                Text(opt.label, color = fg, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                 opt.count?.let { c ->
                     Spacer(Modifier.width(6.dp))
                     Box(
                         Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(if (on) GlassAccent.copy(alpha = 0.14f) else GlassInk.copy(alpha = 0.06f))
+                            .background(if (on) Color.White.copy(alpha = 0.25f) else GlassInk.copy(alpha = 0.06f))
                             .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) { Text("$c", color = if (on) GlassAccent else GlassMuted, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+                    ) { Text("$c", color = fg, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                 }
             }
         }
@@ -208,10 +259,11 @@ fun GradientButton(
     val shape = RoundedCornerShape(height / 2)
     Row(
         modifier = modifier
+            .springClick(enabled = enabled && !loading, onClick = onClick)
             .height(height)
+            .then(if (enabled) Modifier.shadow(8.dp, shape, ambientColor = GlassAccent, spotColor = GlassAccent) else Modifier)
             .clip(shape)
             .background(if (enabled) GlassGradientH else Brush.horizontalGradient(listOf(Color(0xFFC9CED8), Color(0xFFB8BECB))))
-            .clickable(enabled = enabled && !loading, onClick = onClick)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -239,15 +291,16 @@ fun GlassButton(
 ) {
     Row(
         modifier = modifier
+            .springClick(enabled = enabled, onClick = onClick)
             .height(height)
-            .glass(RoundedCornerShape(height / 2), alpha = 0.75f, elevation = 0.dp)
-            .clickable(enabled = enabled, onClick = onClick)
+            .glass(RoundedCornerShape(height / 2), alpha = if (enabled) 0.8f else 0.45f, elevation = 0.dp)
             .padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) { Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-        Text(text, color = tint, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, maxLines = 1)
+        val t = if (enabled) tint else tint.copy(alpha = 0.4f)
+        if (icon != null) { Icon(icon, null, tint = t, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
+        Text(text, color = t, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, maxLines = 1)
     }
 }
 
@@ -255,9 +308,9 @@ fun GlassButton(
 fun GlassIconButton(icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 44.dp, tint: Color = GlassInk, contentDescription: String? = null) {
     Box(
         modifier = modifier
+            .springClick(pressedScale = 0.88f, onClick = onClick)
             .size(size)
-            .glass(CircleShape, alpha = 0.65f, elevation = 0.dp)
-            .clickable(onClick = onClick),
+            .glass(CircleShape, alpha = 0.72f, elevation = 0.dp),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(size * 0.48f)) }
 }
@@ -267,7 +320,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
-            Text(action, color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onAction))
+            Text(action, color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.springClick(onClick = onAction))
         }
     }
 }
@@ -346,12 +399,14 @@ fun PhotoCard(
     progress: Float? = null,
     onClick: (() -> Unit)? = null,
     topEnd: (@Composable BoxScope.() -> Unit)? = null,
+    topStart: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
+            .then(if (onClick != null) Modifier.springClick(pressedScale = 0.96f, onClick = onClick) else Modifier)
+            .shadow(10.dp, RoundedCornerShape(corner), ambientColor = Color(0x3323305A), spotColor = Color(0x3323305A))
             .clip(RoundedCornerShape(corner))
-            .border(1.dp, GlassStroke, RoundedCornerShape(corner))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .border(1.dp, GlassEdge, RoundedCornerShape(corner)),
     ) {
         Artwork(model, Modifier.fillMaxSize(), corner = 0.dp, seed = seed)
         Box(
@@ -375,5 +430,6 @@ fun PhotoCard(
             }
         }
         topEnd?.let { Box(Modifier.align(Alignment.TopEnd)) { it() } }
+        topStart?.let { Box(Modifier.align(Alignment.TopStart)) { it() } }
     }
 }

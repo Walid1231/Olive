@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.waleve.player.presentation.components.GlassGradientH
+import com.waleve.player.presentation.components.springClick
 import com.waleve.player.presentation.theme.GlassDanger
 import com.waleve.player.presentation.theme.GlassInk
 
@@ -85,7 +86,6 @@ fun BottomNavBar(
     modifier: Modifier = Modifier,
     badges: Map<String, Int> = emptyMap(),
 ) {
-    val haptic = LocalHapticFeedback.current
     val shape = RoundedCornerShape(30.dp)
     Row(
         modifier = modifier
@@ -106,14 +106,9 @@ fun BottomNavBar(
             val count = badges[item.label] ?: 0
             Box(
                 modifier = Modifier
+                    .springClick(enabled = !selected, pressedScale = 0.88f) { onNavigate(item.route) }
                     .clip(RoundedCornerShape(22.dp))
                     .then(if (selected) Modifier.background(GlassGradientH) else Modifier)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        if (!selected) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onNavigate(item.route)
-                        }
-                    }
                     .padding(horizontal = if (selected) 14.dp else 11.dp, vertical = 11.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -124,18 +119,17 @@ fun BottomNavBar(
                             contentDescription = item.label, tint = tint, modifier = Modifier.size(23.dp),
                         )
                         if (count > 0) {
+                            // Red badge with a white ring: readable on the white dock and on the green pill
                             Box(
-                                Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-6).dp)
-                                    .widthIn(min = 17.dp).height(17.dp).clip(CircleShape)
-                                    .background(if (selected) Color.White else GlassDanger)
+                                Modifier.align(Alignment.TopEnd).offset(x = 9.dp, y = (-8).dp)
+                                    .widthIn(min = 18.dp).height(18.dp)
+                                    .shadow(3.dp, CircleShape, ambientColor = GlassDanger, spotColor = GlassDanger)
+                                    .clip(CircleShape).background(Color.White).padding(1.5.dp)
+                                    .clip(CircleShape).background(GlassDanger)
                                     .padding(horizontal = 4.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(
-                                    if (count > 9) "9+" else "$count",
-                                    color = if (selected) GlassDanger else Color.White,
-                                    fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold,
-                                )
+                                Text(if (count > 9) "9+" else "$count", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 10.sp)
                             }
                         }
                     }
@@ -145,7 +139,7 @@ fun BottomNavBar(
                         exit = shrinkHorizontally(spring(stiffness = Spring.StiffnessMedium)) + fadeOut(tween(120)),
                     ) {
                         Row {
-                            Spacer(Modifier.width(7.dp))
+                            Spacer(Modifier.width(if (count > 0) 12.dp else 7.dp))
                             Text(item.label, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
                         }
                     }

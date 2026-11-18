@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.together
 
 import android.widget.Toast
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -98,7 +99,7 @@ fun FriendPicker(
             val off = f.uid in disabled
             val on = f.uid in selected || off
             Row(
-                Modifier.fillMaxWidth().clickable(enabled = !off) { onToggle(f.uid) }.padding(horizontal = 14.dp, vertical = 9.dp),
+                Modifier.springClick(enabled = !off) { onToggle(f.uid) }.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Avatar(f.avatarUrl, f.displayName, 38.dp)
@@ -279,8 +280,8 @@ fun TogetherBanner(onClick: () -> Unit, modifier: Modifier = Modifier, vm: Toget
         val session = s ?: return@AnimatedVisibility
         val others = session.members.size - 1
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp).clip(RoundedCornerShape(16.dp))
-                .background(GlassGradientH).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.springClick(onClick = onClick).fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp).clip(RoundedCornerShape(16.dp))
+                .background(GlassGradientH).padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Rounded.Headphones, null, tint = Color.White, modifier = Modifier.size(16.dp))

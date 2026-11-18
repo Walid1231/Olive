@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.home
 
 import androidx.compose.foundation.background
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -127,13 +130,13 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                Avatar(profile?.avatarUrl, profile?.displayName ?: "Olive", 44.dp, Modifier.clickable(onClick = onOpenProfile))
+                Avatar(profile?.avatarUrl, profile?.displayName ?: "Olive", 44.dp, Modifier.springClick(onClick = onOpenProfile))
             }
         }
         // ── Search pill ──
         item {
             Row(
-                Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.7f).clickable(onClick = onSearchOnline).padding(horizontal = 16.dp, vertical = 15.dp),
+                Modifier.springClick(onClick = onSearchOnline).fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.7f).padding(horizontal = 16.dp, vertical = 15.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Search, null, tint = GlassSub, modifier = Modifier.size(20.dp))
@@ -152,6 +155,38 @@ fun HomeScreen(
                     CircularProgressIndicator(Modifier.size(20.dp), color = GlassAccent, strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
                     Text("Finding songs and audiobooks on your phone…", color = GlassInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+            }
+        }
+        // ── New: home-screen widget (until added or dismissed) ──
+        item {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val tipPrefs = remember { ctx.getSharedPreferences("tips", android.content.Context.MODE_PRIVATE) }
+            var showTip by remember { mutableStateOf(!tipPrefs.getBoolean("widget_tip_done", false) && !com.waleve.player.widget.WidgetPin.isAdded(ctx)) }
+            androidx.compose.animation.AnimatedVisibility(showTip) {
+                Row(
+                    Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.8f).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(GlassGradientH), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Widgets, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("New: Olive widget", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp)
+                        Text("Play, pause and skip from your home screen", color = GlassSub, fontSize = 12.sp)
+                    }
+                    GradientButton("Add", {
+                        com.waleve.player.widget.WidgetPin.request(ctx)
+                        tipPrefs.edit().putBoolean("widget_tip_done", true).apply(); showTip = false
+                    }, height = 36.dp)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.Rounded.Close, "Dismiss", tint = GlassMuted,
+                        modifier = Modifier.size(28.dp).padding(4.dp).springClick {
+                            tipPrefs.edit().putBoolean("widget_tip_done", true).apply(); showTip = false
+                        },
+                    )
                 }
             }
         }

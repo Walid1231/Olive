@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.download
 
 import androidx.compose.foundation.layout.statusBarsPadding
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -247,7 +248,7 @@ fun DownloadScreen(
 
                     val isExtracting = uiState is DownloadUiState.Loading
                     Box(
-                        modifier = Modifier
+                        modifier = Modifier.springClick(enabled = url.isNotBlank() && !isExtracting) { viewModel.extractInfo() }
                             .fillMaxWidth()
                             .height(50.dp)
                             .clip(RoundedCornerShape(14.dp))
@@ -261,7 +262,7 @@ fun DownloadScreen(
                                         listOf(gc.accent.copy(alpha = 0.4f), gc.accent.copy(alpha = 0.4f))
                                     )
                             )
-                            .clickable(enabled = url.isNotBlank() && !isExtracting) { viewModel.extractInfo() },
+                            ,
                         contentAlignment = Alignment.Center,
                     ) {
                         Row(
@@ -480,10 +481,10 @@ private fun FormatSelectionContent(
 
         // ── Toggle Advanced ────────────────────────────
         Row(
-            modifier = Modifier
+            modifier = Modifier.springClick { showAdvanced = !showAdvanced }
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .clickable { showAdvanced = !showAdvanced }
+                
                 .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -550,13 +551,13 @@ private fun FormatRow(
     }
 
     Row(
-        modifier = Modifier
+        modifier = Modifier.springClick(onClick = onClick)
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(gc.surfaceCard)
             .border(1.dp, gc.surfaceCard, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -932,7 +933,7 @@ private fun DoneContent(
 
         // ── Gradient Download Another CTA ─────────────────────
         Box(
-            modifier = Modifier
+            modifier = Modifier.springClick { onReset() }
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(16.dp))
@@ -941,7 +942,7 @@ private fun DoneContent(
                         listOf(gc.accent, gc.accentLight, gc.accent)
                     )
                 )
-                .clickable { onReset() },
+                ,
             contentAlignment = Alignment.Center,
         ) {
             Row(
@@ -1064,13 +1065,13 @@ private fun PlaylistSelectionContent(
         ) {
             items(items, key = { it.url }) { item ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
+                    modifier = Modifier.springClick {
                             val set = selectedUrls.value.toMutableSet()
                             if (set.contains(item.url)) set.remove(item.url) else set.add(item.url)
                             selectedUrls.value = set
                         }
+                        .fillMaxWidth()
+                        
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

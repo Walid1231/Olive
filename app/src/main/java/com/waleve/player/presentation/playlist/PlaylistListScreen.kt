@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.playlist
 
 import android.net.Uri
+import com.waleve.player.presentation.components.springClick
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -156,9 +157,9 @@ private fun PlaylistItem(
 ) {
     val gc = LocalGhibliColors.current
     Row(
-        modifier = Modifier
+        modifier = Modifier.springClick(onClick = onClick)
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

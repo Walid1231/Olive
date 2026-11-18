@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.player
 
 import androidx.compose.foundation.border
+import com.waleve.player.presentation.components.springClick
 import com.waleve.player.presentation.components.GlassGradient
 import com.waleve.player.presentation.components.GlassGradientH
 import com.waleve.player.presentation.components.glass
@@ -464,12 +465,12 @@ fun NowPlayingScreen(
                 }
                 // Play / Pause — large white circle
                 Box(
-                    modifier = Modifier
+                    modifier = Modifier.springClick(onClick = onPlayPause)
                         .size(72.dp)
                         .shadow(14.dp, CircleShape, ambientColor = GlassAccent, spotColor = GlassAccent)
                         .clip(CircleShape)
                         .background(GlassGradient)
-                        .clickable(onClick = onPlayPause),
+                        ,
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -620,7 +621,7 @@ fun NowPlayingScreen(
 
             // ── Lyrics chip ───────────────────────────────────────────────────
             Box(
-                modifier = Modifier
+                modifier = Modifier.springClick { showLyrics = !showLyrics }
                     .clip(RoundedCornerShape(50.dp))
                     .background(
                         if (showLyrics) accentColor.copy(alpha = 0.25f)
@@ -631,7 +632,7 @@ fun NowPlayingScreen(
                         if (showLyrics) accentColor.copy(alpha = 0.5f) else NpInk.copy(alpha = 0.12f),
                         RoundedCornerShape(50.dp),
                     )
-                    .clickable { showLyrics = !showLyrics }
+                    
                     .padding(horizontal = 20.dp, vertical = 10.dp),
             ) {
                 Row(
@@ -701,9 +702,9 @@ private fun SpotifyActionButton(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = Modifier.springClick(onClick = onClick)
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            
             .padding(horizontal = 6.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),

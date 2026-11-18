@@ -54,15 +54,22 @@ fun WaLeveAppContent() {
         val updateViewModel: AppUpdateViewModel = hiltViewModel()
         val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
         
-        LaunchedEffect(Unit) {
-            updateViewModel.checkForUpdates()
+        // Check for a new release at start and whenever Olive comes back (at most every 6 h)
+        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+            val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) updateViewModel.checkForUpdates()
+            }
+            lifecycleOwner.lifecycle.addObserver(obs)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
         }
 
         updateInfo?.let { info ->
             UpdateDialog(
                 updateInfo = info,
                 updateChecker = updateViewModel.updateChecker,
-                onDismiss = updateViewModel::dismissUpdate
+                onDismiss = updateViewModel::dismissUpdate,
+                onLater = updateViewModel::later,
             )
         }
 

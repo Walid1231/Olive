@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.library
 
 import androidx.compose.ui.unit.sp
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -227,7 +228,7 @@ fun LibraryScreen(
             Text(
                 "$hiddenCount hidden · Show again",
                 color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp).clickable { viewModel.restoreHidden() },
+                modifier = Modifier.springClick { viewModel.restoreHidden() }.padding(horizontal = 24.dp, vertical = 2.dp),
             )
         }
 
@@ -262,7 +263,7 @@ fun LibraryScreen(
 @Composable
 private fun LibraryTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.glass(RoundedCornerShape(20.dp)).clickable(onClick = onClick).padding(12.dp),
+        modifier.springClick(onClick = onClick).glass(RoundedCornerShape(20.dp)).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
@@ -289,10 +290,10 @@ private fun ShortcutChip(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
+        modifier = modifier.springClick(onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
-            .clickable(onClick = onClick)
+            
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -597,9 +598,9 @@ private fun AudiobooksTab(
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 val book = files.filter { it.album == ch.album && it.artist == ch.artist }
                 Row(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).clickable {
+                    Modifier.springClick {
                         val i = book.indexOfFirst { it.id == ch.id }; onSongClick(book, i.coerceAtLeast(0))
-                    }.padding(12.dp),
+                    }.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Artwork(ch.albumArtUri, Modifier.size(60.dp), seed = ch.album.hashCode())
@@ -634,7 +635,7 @@ private fun AudiobooksTab(
                 modifier = Modifier.fillMaxWidth().aspectRatio(0.78f),
                 topEnd = {
                     Box(
-                        Modifier.padding(8.dp).size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).clickable { menu = true },
+                        Modifier.springClick { menu = true }.padding(8.dp).size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.MoreVert, "Book options", tint = Color.White, modifier = Modifier.size(18.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
@@ -722,12 +723,12 @@ private fun GenresTab(
     LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
         items(genres) { genre ->
             Row(
-                modifier = Modifier
+                modifier = Modifier.springClick { onGenreClick(genre) }
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(gc.surfaceCard)
-                    .clickable { onGenreClick(genre) }
+                    
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -773,12 +774,12 @@ private fun FoldersTab(
     LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
         items(folders) { folder ->
             Row(
-                modifier = Modifier
+                modifier = Modifier.springClick { onFolderClick(folder) }
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(gc.surfaceCard)
-                    .clickable { onFolderClick(folder) }
+                    
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

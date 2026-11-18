@@ -2,6 +2,7 @@ package com.waleve.player.presentation.search
 
 
 import androidx.compose.foundation.layout.statusBarsPadding
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -322,11 +323,11 @@ private fun SearchIdleState(
             ) {
                 row.forEach { genre ->
                     Box(
-                        modifier = Modifier
+                        modifier = Modifier.springClick { onGenreClick(genre.split(" ").first()) }
                             .clip(RoundedCornerShape(20.dp))
                             .background(accentColor.copy(alpha = 0.10f))
                             .border(1.dp, accentColor.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
-                            .clickable { onGenreClick(genre.split(" ").first()) }
+                            
                             .padding(horizontal = 14.dp, vertical = 7.dp),
                     ) {
                         Text(genre, style = MaterialTheme.typography.labelMedium, color = accentColor)
@@ -411,12 +412,12 @@ private fun SearchResultCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Play / stream button
             Box(
-                modifier = Modifier
+                modifier = Modifier.springClick(onClick = onPlayClick)
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(if (isStreaming) accent else accent.copy(alpha = 0.15f))
                     .border(1.dp, accent.copy(alpha = 0.35f), CircleShape)
-                    .clickable(onClick = onPlayClick),
+                    ,
                 contentAlignment = Alignment.Center,
             ) {
                 if (isStreaming) {
@@ -441,12 +442,12 @@ private fun SearchResultCard(
                 }
             } else {
                 Box(
-                    modifier = Modifier
+                    modifier = Modifier.springClick(onClick = onDownloadClick)
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(gc.surfaceCard)
                         .border(1.dp, gc.textMuted.copy(alpha = 0.25f), CircleShape)
-                        .clickable(onClick = onDownloadClick),
+                        ,
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Icons.Rounded.CloudDownload, "Download", tint = gc.textMuted, modifier = Modifier.size(20.dp))
@@ -495,12 +496,12 @@ private fun AudioQualityDialog(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         qualities.forEach { quality ->
                             Row(
-                                modifier = Modifier
+                                modifier = Modifier.springClick { onQualitySelected(quality) }
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(gc.accent.copy(alpha = 0.07f))
                                     .border(1.dp, gc.accent.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                    .clickable { onQualitySelected(quality) }
+                                    
                                     .padding(vertical = 13.dp, horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,

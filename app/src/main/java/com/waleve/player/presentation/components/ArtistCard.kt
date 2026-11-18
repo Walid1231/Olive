@@ -32,8 +32,8 @@ fun ArtistCard(
 ) {
     val gc = LocalGhibliColors.current
     Column(
-        modifier = modifier
-            .clickable(onClick = onClick)
+        modifier = modifier.springClick(onClick = onClick)
+            
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

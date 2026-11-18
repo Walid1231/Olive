@@ -1,6 +1,10 @@
 package com.waleve.player.presentation.friends
 
 import android.content.ClipData
+import com.waleve.player.presentation.components.springClick
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.shadow
+import com.waleve.player.presentation.components.PhotoCard
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -209,7 +213,7 @@ fun FriendsScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Friends", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, modifier = Modifier.weight(1f))
-                Avatar(myProfile?.avatarUrl, myProfile?.displayName ?: "Me", 44.dp, Modifier.clickable(onClick = onOpenProfile))
+                Avatar(myProfile?.avatarUrl, myProfile?.displayName ?: "Me", 44.dp, Modifier.springClick(onClick = onOpenProfile))
             }
         }
         // ── My friend code ──
@@ -233,11 +237,13 @@ fun FriendsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TogetherTile(
                     Icons.Rounded.Headphones, "Listen together",
-                    if (invites.isNotEmpty()) "${invites.size} invite${if (invites.size == 1) "" else "s"} waiting" else "Sync with friends",
+                    if (invites.isNotEmpty()) "${invites.size} invite${if (invites.size == 1) "" else "s"} waiting" else "Same song, same second",
+                    colors = listOf(Color(0xFF46C190), Color(0xFF2E8FA8)),
                     highlight = invites.isNotEmpty(), onClick = { showTogether = true }, modifier = Modifier.weight(1f),
                 )
                 TogetherTile(
-                    Icons.AutoMirrored.Rounded.PlaylistPlay, "Group playlists", "Build one together",
+                    Icons.AutoMirrored.Rounded.PlaylistPlay, "Group playlists", "Everyone adds songs",
+                    colors = listOf(Color(0xFFA08CFF), Color(0xFF6A5ACD)),
                     onClick = onOpenGroupPlaylists, modifier = Modifier.weight(1f),
                 )
             }
@@ -247,32 +253,34 @@ fun FriendsScreen(
         if (live.isNotEmpty() && query.trim().length < 2) {
             item {
                 Column {
-                    Overline("Friends listening now", GlassSub)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Listening now", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                        Text("${live.count { it.second.isPlaying }} live", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         live.forEach { (f, np) ->
                             val inv = invites.firstOrNull { it.hostUid == f.uid }
-                            Column(
-                                Modifier.width(150.dp).glass(RoundedCornerShape(20.dp), alpha = 0.8f)
-                                    .clickable { if (inv != null) togetherVm.join(f.uid) else togetherVm.playFriend(np) }
-                                    .padding(10.dp),
-                            ) {
-                                Box {
-                                    Artwork(np.track.artUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp, seed = np.track.title.hashCode())
-                                    Avatar(f.avatarUrl, f.displayName, 30.dp, Modifier.align(Alignment.BottomStart).offset(x = 6.dp, y = (-6).dp))
-                                    if (np.isPlaying) Box(
-                                        Modifier.align(Alignment.TopEnd).padding(6.dp).clip(RoundedCornerShape(8.dp)).background(GlassAccent).padding(horizontal = 6.dp, vertical = 2.dp),
-                                    ) { Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) }
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Text(np.track.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(f.displayName.substringBefore(' '), color = GlassSub, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    when { inv != null -> "Tap to join"; np.track.playable -> "Tap to play"; else -> "On their phone" },
-                                    color = if (inv != null || np.track.playable) GlassAccent else GlassMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                )
-                            }
+                            val action = when { inv != null -> "Join session"; np.track.playable -> "Tap to play"; else -> "On their phone" }
+                            PhotoCard(
+                                model = np.track.artUrl,
+                                title = np.track.title,
+                                subtitle = "${f.displayName.substringBefore(' ')} · $action",
+                                seed = np.track.title.hashCode(),
+                                onClick = { if (inv != null) togetherVm.join(f.uid) else togetherVm.playFriend(np) },
+                                modifier = Modifier.width(148.dp).aspectRatio(0.78f),
+                                topStart = { Avatar(f.avatarUrl, f.displayName, 30.dp, Modifier.padding(8.dp)) },
+                                topEnd = {
+                                    if (np.isPlaying) Row(
+                                        Modifier.padding(8.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.35f)).padding(horizontal = 7.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        EqualizerBars()
+                                        Spacer(Modifier.width(5.dp))
+                                        Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp)
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -297,7 +305,7 @@ fun FriendsScreen(
                     )
                 }
                 if (isSearching) CircularProgressIndicator(Modifier.size(18.dp), color = GlassAccent, strokeWidth = 2.dp)
-                else if (query.isNotEmpty()) Icon(Icons.Rounded.Close, "Clear", tint = GlassMuted, modifier = Modifier.size(20.dp).clickable { viewModel.clearSearch() })
+                else if (query.isNotEmpty()) Icon(Icons.Rounded.Close, "Clear", tint = GlassMuted, modifier = Modifier.springClick { viewModel.clearSearch() }.size(20.dp))
             }
         }
 
@@ -505,9 +513,9 @@ private fun LazyListScope.inboxTab(
                         listOf("❤️", "🔥", "😂", "😢", "👏").forEach { e ->
                             val mine = n.myReaction == e
                             Box(
-                                Modifier.size(36.dp).clip(CircleShape)
+                                Modifier.springClick(enabled = !mine) { onReact(n, e) }.size(36.dp).clip(CircleShape)
                                     .background(if (mine) GlassAccent.copy(alpha = 0.18f) else GlassInk.copy(alpha = 0.05f))
-                                    .clickable(enabled = !mine) { onReact(n, e) },
+                                    ,
                                 contentAlignment = Alignment.Center,
                             ) { Text(e, fontSize = 17.sp) }
                         }
@@ -663,7 +671,7 @@ private fun EmptyNote(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
 
 @Composable
 private fun TextLink(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, color: Color = GlassAccent) {
-    Row(Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.springClick(onClick = onClick).clip(RoundedCornerShape(10.dp)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
         Text(text, color = color, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
@@ -683,51 +691,50 @@ private fun headline(n: InboxNotification): String = when (n.type) {
 private fun TogetherTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String,
     onClick: () -> Unit, modifier: Modifier = Modifier, highlight: Boolean = false,
+    colors: List<Color> = listOf(Color(0xFF46C190), Color(0xFF2E8FA8)),
 ) {
-    Column(modifier.glass(RoundedCornerShape(22.dp), alpha = 0.75f).clickable(onClick = onClick).padding(14.dp)) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(GlassGradient), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        modifier.springClick(onClick = onClick).glass(shape, alpha = 0.78f)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(colors[0].copy(alpha = 0.16f), Color.Transparent)))
+    ) {
+        // soft colour glow in the corner
+        Box(
+            Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-24).dp).size(90.dp).clip(CircleShape)
+                .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(colors[1].copy(alpha = 0.22f), Color.Transparent)))
+        )
+        Column(Modifier.padding(14.dp)) {
+            Box(
+                Modifier.size(42.dp).shadow(8.dp, RoundedCornerShape(14.dp), ambientColor = colors[1], spotColor = colors[1])
+                    .clip(RoundedCornerShape(14.dp)).background(androidx.compose.ui.graphics.Brush.linearGradient(colors)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+            Spacer(Modifier.height(12.dp))
+            Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (highlight) { Box(Modifier.size(7.dp).clip(CircleShape).background(GlassDanger)); Spacer(Modifier.width(5.dp)) }
+                Text(sub, color = if (highlight) GlassDanger else GlassSub, fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(sub, color = if (highlight) GlassDanger else GlassSub, fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-private fun metaLine(n: InboxNotification): String = buildString {
-    append(if (n.isAudiobook) "Audiobook" else "Song")
-    n.artist?.takeIf { it.isNotBlank() && !it.startsWith("Shared by") }?.let { append(" · $it") }
-    when {
-        n.fileUrl != null && n.fileSize > 0 -> append(" · %.1f MB file".format(n.fileSize / 1_048_576.0))
-        n.fileUrl != null -> append(" · file")
-        n.videoId != null -> append(" · online")
+/** Three little bars bouncing like an equalizer (for "LIVE"). */
+@Composable
+private fun EqualizerBars(color: Color = Color.White) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "eq")
+    Row(Modifier.height(10.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(1.5.dp)) {
+        listOf(420, 300, 520).forEachIndexed { i, ms ->
+            val h by t.animateFloat(
+                initialValue = 0.3f, targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(ms, delayMillis = i * 60),
+                    androidx.compose.animation.core.RepeatMode.Reverse,
+                ),
+                label = "bar$i",
+            )
+            Box(Modifier.width(2.5.dp).fillMaxHeight(h).clip(RoundedCornerShape(1.dp)).background(color))
+        }
     }
-}
-
-internal fun timeAgo(ts: Long): String {
-    if (ts <= 0) return ""
-    val s = (System.currentTimeMillis() - ts) / 1000
-    return when {
-        s < 60 -> "now"
-        s < 3600 -> "${s / 60}m"
-        s < 86_400 -> "${s / 3600}h"
-        s < 604_800 -> "${s / 86_400}d"
-        else -> java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date(ts))
-    }
-}
-
-private fun copyToClipboard(context: Context, code: String) {
-    if (code.isBlank()) return
-    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("Olive friend code", code))
-    Toast.makeText(context, "Copied $code", Toast.LENGTH_SHORT).show()
-}
-
-private fun shareCode(context: Context, code: String) {
-    if (code.isBlank()) return
-    val i = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, "Add me on Olive 🎵 My friend code: $code\nGet the app: https://github.com/Walid1231/Olive/releases/latest/download/Olive.apk")
-    }
-    context.startActivity(Intent.createChooser(i, "Invite a friend"))
 }

@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -106,6 +108,19 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
                 GlassButton("Find covers", { vm.findCovers() }, Modifier.weight(1f), icon = Icons.Rounded.Image, enabled = working == null && autoCovers, height = 46.dp)
             }
             working?.let { Text(it, color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+
+            // ── App ──
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val updateVm: com.waleve.player.presentation.update.AppUpdateViewModel = hiltViewModel()
+            val checking by updateVm.checking.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                updateVm.messages.collect { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show() }
+            }
+            Text("App · version ${com.waleve.player.BuildConfig.VERSION_NAME}", color = GlassSub, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassButton(if (checking) "Checking…" else "Check for updates", { updateVm.checkNow() }, Modifier.weight(1f), icon = Icons.Rounded.SystemUpdate, enabled = !checking, height = 46.dp)
+                GlassButton("Add widget", { com.waleve.player.widget.WidgetPin.request(ctx) }, Modifier.weight(1f), icon = Icons.Rounded.Widgets, height = 46.dp)
+            }
         }
     }
 }

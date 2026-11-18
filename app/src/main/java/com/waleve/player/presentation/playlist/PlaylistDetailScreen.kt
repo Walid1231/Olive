@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.playlist
 
 import androidx.compose.foundation.background
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -246,12 +247,12 @@ fun SharePlaylistBottomSheet(
                     friends.forEach { friend ->
                         val isSelected = friend.uid in selectedUids
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                            modifier = Modifier.springClick {
                                     if (isSelected) selectedUids.remove(friend.uid)
                                     else selectedUids.add(friend.uid)
                                 }
+                                .fillMaxWidth()
+                                
                                 .background(
                                     if (isSelected) gc.accent.copy(alpha = 0.08f) else Color.Transparent,
                                     RoundedCornerShape(12.dp),

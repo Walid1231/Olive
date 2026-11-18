@@ -106,7 +106,7 @@ fun SongListItem(
     }
 
     Row(
-        modifier = modifier
+        modifier = modifier.springClick(onClick = onClick)
             .fillMaxWidth()
             .then(
                 if (isPlaying) Modifier
@@ -114,7 +114,7 @@ fun SongListItem(
                     .background(gc.accent.copy(alpha = 0.10f))
                 else Modifier
             )
-            .clickable(onClick = onClick)
+            
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

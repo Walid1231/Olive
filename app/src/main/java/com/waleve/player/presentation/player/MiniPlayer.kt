@@ -1,6 +1,7 @@
 package com.waleve.player.presentation.player
 
 import androidx.compose.material.icons.rounded.Bedtime
+import com.waleve.player.presentation.components.springClick
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,11 +78,11 @@ fun MiniPlayer(
 
     // Light glass mini player (matches Figma "Light/Mini player")
     Box(
-        modifier = modifier
+        modifier = modifier.springClick(onClick = onClick)
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .glass(RoundedCornerShape(22.dp), alpha = 0.82f)
-            .clickable(onClick = onClick),
+            ,
     ) {
         Row(
             modifier = Modifier.padding(start = 9.dp, end = 12.dp, top = 9.dp, bottom = 9.dp),
@@ -107,8 +108,8 @@ fun MiniPlayer(
             var sleepSheet by remember { mutableStateOf(false) }
             if (sleepTimerRemaining > 0 || sleepEot) {
                 Row(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(GlassAccent.copy(alpha = 0.12f))
-                        .clickable { sleepSheet = true }.padding(horizontal = 8.dp, vertical = 5.dp),
+                    Modifier.springClick { sleepSheet = true }.clip(RoundedCornerShape(12.dp)).background(GlassAccent.copy(alpha = 0.12f))
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = GlassAccent, modifier = Modifier.size(14.dp))
@@ -119,7 +120,7 @@ fun MiniPlayer(
             }
             if (sleepSheet) SleepTimerSheet(onDismiss = { sleepSheet = false })
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(GlassGradient).clickable(onClick = onPlayPause),
+                modifier = Modifier.springClick(onClick = onPlayPause).size(40.dp).clip(CircleShape).background(GlassGradient),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
