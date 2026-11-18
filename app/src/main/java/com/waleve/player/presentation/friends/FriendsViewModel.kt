@@ -435,8 +435,3 @@ class FriendsViewModel @Inject constructor(
     }
 }
 
-enum class SearchMode {
-    NAME,           // prefix search by display name
-    FRIEND_CODE,    // exact match by WLEV-XXXX code
-    EMAIL,          // exact match by email
-}
