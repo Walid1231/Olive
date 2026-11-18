@@ -61,6 +61,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -163,6 +164,10 @@ fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Library", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, modifier = Modifier.weight(1f))
+            var settings by remember { mutableStateOf(false) }
+            GlassIconButton(Icons.Filled.Tune, { settings = true }, contentDescription = "Library settings")
+            if (settings) LibrarySettingsSheet(onDismiss = { settings = false })
+            Spacer(Modifier.width(8.dp))
             GlassIconButton(
                 if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
                 onClick = { if (showSearch) viewModel.updateSearchQuery(""); showSearch = !showSearch },

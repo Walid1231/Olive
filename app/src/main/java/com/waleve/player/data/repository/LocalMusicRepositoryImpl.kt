@@ -25,11 +25,19 @@ import javax.inject.Singleton
 class LocalMusicRepositoryImpl @Inject constructor(
     private val songDao: SongDao,
     private val contentResolver: ContentResolver,
+    private val libraryPrefs: com.waleve.player.data.cover.LibraryPrefs,
+    private val coverArtFetcher: com.waleve.player.data.cover.CoverArtFetcher,
 ) : LocalMusicRepository {
 
     override suspend fun scanMusic() = withContext(Dispatchers.IO) {
-        val scanned = queryMediaStore()
+        val hideJunk = libraryPrefs.hideJunk.value
+        val scanned = queryMediaStore().filter { !hideJunk || !com.waleve.player.data.cover.LibraryPrefs.isJunk(it.entity.path, it.entity.duration) }
         songDao.insertSongs(scanned.map { it.entity })
+        // Voice notes / call recordings / ringtones that were added before → drop them from the library
+        if (hideJunk) {
+            val junk = songDao.getLocalSongs().filter { com.waleve.player.data.cover.LibraryPrefs.isJunk(it.path, it.duration) }.map { it.id }
+            if (junk.isNotEmpty()) junk.chunked(500).forEach { songDao.removeFromAllPlaylists(it); songDao.deleteSongs(it) }
+        }
         // Forget local songs whose files were deleted outside the app
         val present = scanned.map { it.entity.path }.toHashSet()
         val gone = songDao.getLocalSongs().filter { it.path !in present && !File(it.path).exists() }.map { it.id }
@@ -40,6 +48,8 @@ class LocalMusicRepositoryImpl @Inject constructor(
                 songDao.setMediaTypeForPaths(chunk, type)
             }
         }
+        // Missing covers → look them up online in the background
+        coverArtFetcher.runInBackground()
     }
 
     override fun getAudiobooks(): Flow<List<Song>> =

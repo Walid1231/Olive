@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">Olive</string>
+    <string name="widget_description">Now playing with play / pause and skip</string>
+    <string name="widget_art">Cover art</string>
+    <string name="widget_label_idle">Olive</string>
+    <string name="widget_title_idle">Nothing playing</string>
+    <string name="widget_artist_idle">Tap to open your music</string>
+    <string name="widget_prev">Previous</string>
+    <string name="widget_play">Play or pause</string>
+    <string name="widget_next">Next</string>
 </resources>

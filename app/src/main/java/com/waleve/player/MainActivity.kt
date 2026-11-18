@@ -27,6 +27,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var together: com.waleve.player.data.social.TogetherRepository
 
+    @Inject
+    lateinit var playbackController: com.waleve.player.service.PlaybackController
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -39,6 +42,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestRequiredPermissions()
         together.start()
+        com.waleve.player.widget.OliveWidget.watch(this, playbackController)
 
         setContent {
             WaLeveAppContent()

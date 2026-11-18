@@ -66,6 +66,8 @@ class SleepTimerViewModel @Inject constructor(private val controller: PlaybackCo
     val total = controller.sleepTimerTotal
     val endOfTrack = controller.sleepEndOfTrack
     val fadeOut = controller.sleepFadeOut
+    val shake = controller.sleepShake
+    fun setShake(on: Boolean) = controller.setSleepShake(on)
     fun start(minutes: Int) = controller.setSleepTimer(minutes)
     fun extend(minutes: Int) = controller.extendSleepTimer(minutes)
     fun endOfTrack() = controller.setSleepAtEndOfTrack()
@@ -87,6 +89,7 @@ fun SleepTimerSheet(onDismiss: () -> Unit, vm: SleepTimerViewModel = hiltViewMod
     val total by vm.total.collectAsStateWithLifecycle()
     val endOfTrack by vm.endOfTrack.collectAsStateWithLifecycle()
     val fade by vm.fadeOut.collectAsStateWithLifecycle()
+    val shake by vm.shake.collectAsStateWithLifecycle()
     val active = remaining > 0 || endOfTrack
     var custom by remember { mutableFloatStateOf(25f) }
 
@@ -170,6 +173,14 @@ fun SleepTimerSheet(onDismiss: () -> Unit, vm: SleepTimerViewModel = hiltViewMod
                     Text("Lower the volume slowly in the last 30 seconds", color = GlassSub, fontSize = 12.sp)
                 }
                 Switch(fade, vm::setFade, colors = SwitchDefaults.colors(checkedTrackColor = GlassAccent, checkedThumbColor = Color.White))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.9f).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Shake for 5 more minutes", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Still awake? Give the phone a shake", color = GlassSub, fontSize = 12.sp)
+                }
+                Switch(shake, vm::setShake, colors = SwitchDefaults.colors(checkedTrackColor = GlassAccent, checkedThumbColor = Color.White))
             }
         }
     }

@@ -59,8 +59,35 @@ class PlaybackController @Inject constructor(
     private val bookmarks = context.getSharedPreferences("audiobook_positions", Context.MODE_PRIVATE)
     private var lastBookmarkSave = 0L
 
-    private fun savedPosition(song: Song?): Long =
-        if (song?.isAudiobook == true) bookmarks.getLong(song.path, 0L) else 0L
+    private fun savedPosition(song: Song?): Long {
+        if (song?.isAudiobook != true) return 0L
+        val pos = bookmarks.getLong(song.path, 0L)
+        if (pos <= 0) return 0L
+        // Smart resume: step back a little, more the longer you've been away
+        val savedAt = bookmarks.getLong("t:" + song.path, 0L)
+        val gap = if (savedAt > 0) System.currentTimeMillis() - savedAt else 0L
+        return (pos - smartRewind(gap)).coerceAtLeast(0L)
+    }
+
+    /** How far to rewind an audiobook after a break of [gapMs]. */
+    private fun smartRewind(gapMs: Long): Long = when {
+        gapMs >= 3_600_000 -> 30_000
+        gapMs >= 600_000 -> 20_000
+        gapMs >= 60_000 -> 10_000
+        gapMs >= 15_000 -> 3_000
+        else -> 0
+    }
+    private var pausedAt = 0L
+
+    // ── Speed memory: every audiobook keeps its own speed; music has one shared speed ──
+    private val speeds by lazy { context.getSharedPreferences("playback_speeds", Context.MODE_PRIVATE) }
+    private fun speedKey(song: Song) = if (song.isAudiobook) "book:${song.album}|${song.artist}" else "music"
+    private fun applySpeedFor(song: Song?) {
+        val c = mediaController ?: return
+        song ?: return
+        val target = speeds.getFloat(speedKey(song), 1f)
+        if (c.playbackParameters.speed != target) c.setPlaybackSpeed(target)
+    }
 
     private fun saveBookmark(force: Boolean = false) {
         val c = mediaController ?: return
@@ -73,7 +100,7 @@ class PlaybackController @Inject constructor(
         val dur = c.duration
         // Finished (last 30 s) → start from the beginning next time
         val toSave = if (dur > 0 && pos > dur - 30_000) 0L else pos
-        bookmarks.edit().putLong(song.path, toSave).apply()
+        bookmarks.edit().putLong(song.path, toSave).putLong("t:" + song.path, now).apply()
     }
 
     // ── Sleep Timer ──────────────────────────────────────────
@@ -87,6 +114,11 @@ class PlaybackController @Inject constructor(
     private val sleepPrefs by lazy { context.getSharedPreferences("sleep_timer", Context.MODE_PRIVATE) }
     private val _sleepFadeOut = MutableStateFlow(true)
     val sleepFadeOut: StateFlow<Boolean> = _sleepFadeOut.asStateFlow()
+    /** Shake the phone to add 5 minutes while the timer runs. */
+    private val _sleepShake = MutableStateFlow(true)
+    val sleepShake: StateFlow<Boolean> = _sleepShake.asStateFlow()
+    private var shakeListener: android.hardware.SensorEventListener? = null
+    private var lastShake = 0L
     /** Length of the running timer (ms), for progress rings. */
     private val _sleepTimerTotal = MutableStateFlow(0L)
     val sleepTimerTotal: StateFlow<Long> = _sleepTimerTotal.asStateFlow()
@@ -101,6 +133,7 @@ class PlaybackController @Inject constructor(
         connectToService()
         createSleepTimerNotificationChannel()
         _sleepFadeOut.value = sleepPrefs.getBoolean("fade", true)
+        _sleepShake.value = sleepPrefs.getBoolean("shake", true)
     }
 
     private fun connectToService() {
@@ -121,7 +154,16 @@ class PlaybackController @Inject constructor(
     private fun setupPlayerListener() {
         mediaController?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) saveBookmark(force = true)
+                val c = mediaController
+                val cur = c?.currentMediaItem?.mediaId?.let { songMap[it] }
+                if (!isPlaying) {
+                    saveBookmark(force = true)
+                    pausedAt = if (cur?.isAudiobook == true) System.currentTimeMillis() else 0L
+                } else if (pausedAt > 0 && cur?.isAudiobook == true && c != null) {
+                    val back = smartRewind(System.currentTimeMillis() - pausedAt)
+                    if (back > 0) c.seekTo((c.currentPosition - back).coerceAtLeast(0L))
+                    pausedAt = 0L
+                } else pausedAt = 0L
                 updateState()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -141,6 +183,8 @@ class PlaybackController @Inject constructor(
                     val pos = savedPosition(mediaItem?.mediaId?.let { songMap[it] })
                     if (pos > 0) mediaController?.seekTo(pos)
                 }
+                pausedAt = 0L
+                applySpeedFor(mediaItem?.mediaId?.let { songMap[it] })
                 updateState()
             }
             override fun onPlaybackStateChanged(playbackState: Int) = updateState()
@@ -276,12 +320,14 @@ class PlaybackController @Inject constructor(
 
     fun setPlaybackSpeed(speed: Float) {
         mediaController?.setPlaybackSpeed(speed)
+        _playerState.value.currentSong?.let { speeds.edit().putFloat(speedKey(it), speed).apply() }
     }
 
     // ── Sleep Timer Methods ──────────────────────────────────
 
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
+        stopShake()
         restoreVolume()
         _sleepEndOfTrack.value = false
         cancelSleepTimerNotification()
@@ -307,6 +353,7 @@ class PlaybackController @Inject constructor(
     /** Stop when the current song / chapter ends. */
     fun setSleepAtEndOfTrack() {
         sleepTimerJob?.cancel()
+        stopShake()
         restoreVolume()
         _sleepTimerRemaining.value = 0
         _sleepTimerTotal.value = 0
@@ -320,9 +367,50 @@ class PlaybackController @Inject constructor(
         if (!enabled) restoreVolume()
     }
 
+    fun setSleepShake(enabled: Boolean) {
+        _sleepShake.value = enabled
+        sleepPrefs.edit().putBoolean("shake", enabled).apply()
+        if (!enabled) stopShake() else if (_sleepTimerRemaining.value > 0) startShake()
+    }
+
+    private fun startShake() {
+        if (shakeListener != null || !_sleepShake.value) return
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? android.hardware.SensorManager ?: return
+        val acc = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER) ?: return
+        val l = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                val g = android.hardware.SensorManager.GRAVITY_EARTH
+                val (x, y, z) = Triple(e.values[0] / g, e.values[1] / g, e.values[2] / g)
+                val force = kotlin.math.sqrt(x * x + y * y + z * z)
+                val now = System.currentTimeMillis()
+                if (force > 2.6f && now - lastShake > 2_000 && _sleepTimerRemaining.value > 0) {
+                    lastShake = now
+                    extendSleepTimer(5)
+                    runCatching {
+                        val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
+                        else (context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator)
+                        vib.vibrate(android.os.VibrationEffect.createOneShot(60, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                    }
+                    android.widget.Toast.makeText(context, "Sleep timer +5 min", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+        }
+        sm.registerListener(l, acc, android.hardware.SensorManager.SENSOR_DELAY_UI)
+        shakeListener = l
+    }
+
+    private fun stopShake() {
+        val l = shakeListener ?: return
+        (context.getSystemService(Context.SENSOR_SERVICE) as? android.hardware.SensorManager)?.unregisterListener(l)
+        shakeListener = null
+    }
+
     private fun startCountdown(totalMs: Long) {
         _sleepTimerTotal.value = totalMs
         _sleepTimerRemaining.value = totalMs
+        startShake()
         sleepTimerJob = scope.launch {
             showSleepTimerNotification(_sleepTimerRemaining.value)
             while (_sleepTimerRemaining.value > 0) {
@@ -342,6 +430,7 @@ class PlaybackController @Inject constructor(
             restoreVolume()
             _sleepTimerRemaining.value = 0
             _sleepTimerTotal.value = 0
+            stopShake()
             cancelSleepTimerNotification()
         }
     }
@@ -352,6 +441,7 @@ class PlaybackController @Inject constructor(
 
     fun cancelSleepTimer() {
         sleepTimerJob?.cancel()
+        stopShake()
         restoreVolume()
         _sleepTimerRemaining.value = 0
         _sleepTimerTotal.value = 0
