@@ -43,9 +43,13 @@ fun WaLeveAppContent() {
 
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
-        val currentRoute: Any? = bottomNavItems.firstOrNull { item ->
-            currentDestination?.hasRoute(item.route::class) == true
-        }?.route
+        // Highlight the tab the current screen belongs to (Profile opened from Home → Home stays lit)
+        val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+        val currentRoute: Any? = backStack.asReversed().firstNotNullOfOrNull { entry ->
+            bottomNavItems.firstOrNull { item -> entry.destination.hasRoute(item.route::class) }?.route
+        }
+        // Is the current screen exactly a tab root (not Profile / Album / … on top of it)?
+        val atTabRoot = bottomNavItems.any { currentDestination?.hasRoute(it.route::class) == true }
         val showBottomBar = currentDestination?.hasRoute(NowPlayingRoute::class) != true
 
         val badgeVm: com.waleve.player.presentation.friends.SocialBadgeViewModel = hiltViewModel()
@@ -94,10 +98,21 @@ fun WaLeveAppContent() {
                             isNightMode = isNightMode,
                             badges = mapOf("Friends" to friendsBadge),
                             onNavigate = { route ->
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                val sameTab = currentRoute != null && currentRoute::class == route::class
+                                when {
+                                    // Tapping the tab you're in: go back to its first screen
+                                    sameTab -> if (!atTabRoot) navController.popBackStack(route, inclusive = false)
+                                    // Home is the root of everything: just pop back to it
+                                    route is HomeRoute -> {
+                                        if (!navController.popBackStack(HomeRoute, inclusive = false)) {
+                                            navController.navigate(HomeRoute) { launchSingleTop = true }
+                                        }
+                                    }
+                                    else -> navController.navigate(route) {
+                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                         )

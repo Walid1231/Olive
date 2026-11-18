@@ -106,7 +106,7 @@ fun BottomNavBar(
             val count = badges[item.label] ?: 0
             Box(
                 modifier = Modifier
-                    .springClick(enabled = !selected, pressedScale = 0.88f) { onNavigate(item.route) }
+                    .springClick(pressedScale = 0.88f) { onNavigate(item.route) }
                     .clip(RoundedCornerShape(22.dp))
                     .then(if (selected) Modifier.background(GlassGradientH) else Modifier)
                     .padding(horizontal = if (selected) 14.dp else 11.dp, vertical = 11.dp),
