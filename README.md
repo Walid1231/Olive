@@ -6,6 +6,9 @@ Olive is a modern, feature-rich music player for Android, built natively with **
 - **Social Connect:** Sign in with Google to find friends via unique Friend Codes, share playlists instantly, and discover what your friends are listening to.
 - **Download & Extract:** Built-in integration with `yt-dlp` and `FFmpeg` to extract media streams, download music, and transcode audio on the fly.
 - **In-App Updates (OTA):** Automatic update checker that securely pulls the latest releases directly from GitHub, ensuring you're always on the latest version.
+- **Songs vs Audiobooks:** Audiobooks are detected automatically and kept on their own shelf, with resume-where-you-left-off.
+- **Share anything:** Share local songs/audiobooks (uploaded via Supabase Storage) or online tracks; friends can stream or download them.
+- **Any format:** Download MP3, M4A, Opus, FLAC, WAV, OGG, or MP4 video up to 4K.
 - **Library Management:** Organize your music by Playlists, Albums, Artists, Genres, and Folders (backed by **Room** Database).
 ## 🛠️ Tech Stack
 Olive is built using modern Android development best practices:
@@ -36,6 +39,9 @@ Olive is built using modern Android development best practices:
    ```bash
    ./gradlew assembleDebug
    ```
+### Supabase & release setup
+See [docs/SETUP.md](docs/SETUP.md) for Supabase file sharing, signing and the automatic GitHub release build.
+
 ### Firebase Setup
 To build the app with all social and authentication features enabled, you must provide your own `google-services.json` file:
 1. Create a project in the [Firebase Console](https://console.firebase.google.com/).

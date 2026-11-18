@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,13 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+// Secrets come from local.properties (your laptop) or environment variables (GitHub Actions).
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun secret(name: String): String = (System.getenv(name) ?: localProps.getProperty(name) ?: "").trim()
+
 android {
     namespace = "com.waleve.player"
     compileSdk = 35
@@ -16,20 +25,44 @@ android {
         applicationId = "com.waleve.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.2"
+        versionCode = 3
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Expose version to runtime code for OTA update checks
         buildConfigField("String", "VERSION_NAME", "\"${defaultConfig.versionName}\"")
         buildConfigField("int", "VERSION_CODE", "${defaultConfig.versionCode}")
+
+        // Supabase Storage (used to share local song / audiobook files with friends)
+        buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "SUPABASE_BUCKET", "\"${secret("SUPABASE_BUCKET").ifEmpty { "olive-shares" }}\"")
+
+        ndk {
+            // yt-dlp / FFmpeg native binaries — phones only need ARM
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+    }
+
+    val keystorePath = secret("OLIVE_KEYSTORE_PATH")
+    signingConfigs {
+        if (keystorePath.isNotEmpty() && file(keystorePath).exists()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = secret("OLIVE_KEYSTORE_PASSWORD")
+                keyAlias = secret("OLIVE_KEY_ALIAS")
+                keyPassword = secret("OLIVE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 is off: yt-dlp, Firebase and kotlinx-serialization reflection break easily when shrunk
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -52,6 +85,11 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    packaging {
+        jniLibs { useLegacyPackaging = true }   // yt-dlp needs extracted native libs
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 
     applicationVariants.all {
@@ -106,6 +144,7 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     // Serialization (needed for type-safe Navigation Compose routes)
     implementation(libs.kotlinx.serialization.core)
