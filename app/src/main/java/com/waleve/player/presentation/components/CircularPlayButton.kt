@@ -45,11 +45,7 @@ fun CircularPlayButton(
     )
 
     Box(
-        modifier = modifier.springClick(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
+        modifier = modifier
             .size(size)
             .scale(scale)
             .shadow(
@@ -64,7 +60,11 @@ fun CircularPlayButton(
                     colors = listOf(OliveBright, Olive)
                 )
             )
-            ,
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

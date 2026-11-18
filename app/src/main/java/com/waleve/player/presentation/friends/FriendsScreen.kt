@@ -2,6 +2,7 @@ package com.waleve.player.presentation.friends
 
 import android.content.ClipData
 import com.waleve.player.presentation.components.springClick
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.shadow
 import com.waleve.player.presentation.components.PhotoCard
@@ -737,4 +738,42 @@ private fun EqualizerBars(color: Color = Color.White) {
             Box(Modifier.width(2.5.dp).fillMaxHeight(h).clip(RoundedCornerShape(1.dp)).background(color))
         }
     }
+}
+
+private fun metaLine(n: InboxNotification): String = buildString {
+    append(if (n.isAudiobook) "Audiobook" else "Song")
+    n.artist?.takeIf { it.isNotBlank() && !it.startsWith("Shared by") }?.let { append(" · $it") }
+    when {
+        n.fileUrl != null && n.fileSize > 0 -> append(" · %.1f MB file".format(n.fileSize / 1_048_576.0))
+        n.fileUrl != null -> append(" · file")
+        n.videoId != null -> append(" · online")
+    }
+}
+
+internal fun timeAgo(ts: Long): String {
+    if (ts <= 0) return ""
+    val s = (System.currentTimeMillis() - ts) / 1000
+    return when {
+        s < 60 -> "now"
+        s < 3600 -> "${s / 60}m"
+        s < 86_400 -> "${s / 3600}h"
+        s < 604_800 -> "${s / 86_400}d"
+        else -> java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(java.util.Date(ts))
+    }
+}
+
+private fun copyToClipboard(context: Context, code: String) {
+    if (code.isBlank()) return
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(ClipData.newPlainText("Olive friend code", code))
+    Toast.makeText(context, "Copied $code", Toast.LENGTH_SHORT).show()
+}
+
+private fun shareCode(context: Context, code: String) {
+    if (code.isBlank()) return
+    val i = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, "Add me on Olive 🎵 My friend code: $code\nGet the app: https://github.com/Walid1231/Olive/releases/latest/download/Olive.apk")
+    }
+    context.startActivity(Intent.createChooser(i, "Invite a friend"))
 }
