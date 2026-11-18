@@ -14,7 +14,14 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && (
         request.auth.uid == uid ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount'])
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount']) &&
+          // someone else may only add or remove THEMSELVES
+          request.resource.data.get('friendIds', []).toSet()
+            .difference(resource.data.get('friendIds', []).toSet()).hasOnly([request.auth.uid]) &&
+          resource.data.get('friendIds', []).toSet()
+            .difference(request.resource.data.get('friendIds', []).toSet()).hasOnly([request.auth.uid])
+        )
       );
       allow delete: if signedIn() && request.auth.uid == uid;
 
