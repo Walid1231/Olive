@@ -269,10 +269,11 @@ fun NowPlayingScreen(
             } else {
                 // Large square album art — signature Spotify look
                 val appIconPainter = androidx.compose.ui.res.painterResource(R.mipmap.ic_launcher_foreground)
+                // The cover takes whatever height is left, so the controls below always fit
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
+                        .aspectRatio(1f, matchHeightConstraintsFirst = true)
                         .glass(RoundedCornerShape(30.dp), alpha = 0.45f, elevation = 18.dp)
                         .padding(10.dp)
                         .clip(RoundedCornerShape(22.dp))
@@ -307,7 +308,8 @@ fun NowPlayingScreen(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(24.dp))
+                }
+                Spacer(modifier = Modifier.height(20.dp))
             }
 
             // ── Song Info + Heart ─────────────────────────────────────────────
@@ -593,7 +595,7 @@ fun NowPlayingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // ── Lyrics chip ───────────────────────────────────────────────────
             Box(
@@ -609,7 +611,7 @@ fun NowPlayingScreen(
                         RoundedCornerShape(50.dp),
                     )
                     
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
