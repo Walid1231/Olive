@@ -80,6 +80,11 @@ class YouTubeMusicBrowser @Inject constructor(
     /** Region for recommendations: the phone's country, Indian/Bangla catalogue as the fallback. */
     private val gl: String = java.util.Locale.getDefault().country.takeIf { it.length == 2 && it != "BD" } ?: "IN"
 
+    /** YouTube's visitor id: needed for "more shelves" pages; kept so recommendations stay consistent. */
+    private val prefs by lazy { context.getSharedPreferences("ytm", Context.MODE_PRIVATE) }
+    @Volatile private var visitorData: String? = null
+        get() = field ?: prefs.getString("visitor", null).also { field = it }
+
     private fun bodyWith(extra: Map<String, String?>): String = buildJsonObject {
         putJsonObject("context") {
             putJsonObject("client") {
@@ -87,6 +92,7 @@ class YouTubeMusicBrowser @Inject constructor(
                 put("clientVersion", "1.20251110.01.00")
                 put("hl", "en")
                 put("gl", gl)
+                visitorData?.let { put("visitorData", it) }
             }
         }
         extra.forEach { (k, v) -> if (v != null) put(k, v) }
@@ -104,7 +110,11 @@ class YouTubeMusicBrowser @Inject constructor(
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw java.io.IOException("YouTube Music HTTP ${resp.code}")
-            json.parseToJsonElement(resp.body!!.string()) as JsonObject
+            val obj = json.parseToJsonElement(resp.body!!.string()) as JsonObject
+            obj["responseContext"]["visitorData"].str?.let { v ->
+                if (v != visitorData) { visitorData = v; prefs.edit().putString("visitor", v).apply() }
+            }
+            obj
         }
     }
 
