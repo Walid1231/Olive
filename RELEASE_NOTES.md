@@ -1,4 +1,9 @@
-## Olive 1.5.1 · Audiobooks first, English music
+## Olive 1.5.2 · Update check fix
+
+- **"Check for updates" works on every network.** GitHub allows only 60 version checks an hour per internet address, and mobile networks share addresses. When that limit was used up, Olive wrongly said you were on the latest version. It now falls back to a check without that limit.
+- If GitHub really can't be reached, it says so instead of "latest version".
+
+### From 1.5.1 — · Audiobooks first, English music
 
 ### Discover puts audiobooks on top
 - The first shelves in Search are now **Audiobooks for you**, **Bangla audio golpo** and **Sunday Suspense**.

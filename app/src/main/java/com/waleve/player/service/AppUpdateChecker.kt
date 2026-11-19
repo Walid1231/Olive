@@ -90,7 +90,41 @@ class AppUpdateChecker @Inject constructor(
         return f.takeIf { it.exists() && (info.fileSize <= 0 || it.length() == info.fileSize) }
     }
 
+    /** True when the last check couldn't reach GitHub at all (so "no update" isn't known). */
+    @Volatile var lastCheckFailed = false
+        private set
+
+    private val is64 get() = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
+
+    /**
+     * Backup check that doesn't use GitHub's API (which allows only 60 checks an hour per
+     * internet address — mobile networks share addresses, so it's often used up):
+     * github.com/…/releases/latest redirects to the newest tag; notes come from the repo file.
+     */
+    private fun checkViaWebsite(): UpdateInfo? {
+        val repo = API_URL.substringAfter("repos/").substringBefore("/releases")
+        val tag = okHttpClient.newCall(Request.Builder().url("https://github.com/$repo/releases/latest").build()).execute().use { r ->
+            if (!r.isSuccessful) throw java.io.IOException("HTTP ${r.code}")
+            r.request.url.toString().substringAfter("/releases/tag/", "").ifBlank { throw java.io.IOException("no tag") }
+        }
+        val remote = tag.removePrefix("v")
+        if (!isNewerVersion(remote, BuildConfig.VERSION_NAME.removePrefix("v"))) return null
+        val apkUrl = "https://github.com/$repo/releases/download/$tag/${if (is64) "Olive.apk" else "Olive_32bit.apk"}"
+        val size = runCatching {
+            okHttpClient.newCall(Request.Builder().url(apkUrl).header("Range", "bytes=0-0").build()).execute().use {
+                it.header("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: 0L
+            }
+        }.getOrDefault(0L)
+        val notes = runCatching {
+            okHttpClient.newCall(Request.Builder().url("https://raw.githubusercontent.com/$repo/$tag/RELEASE_NOTES.md").build()).execute().use {
+                if (it.isSuccessful) it.body?.string().orEmpty() else ""
+            }
+        }.getOrDefault("")
+        return UpdateInfo(version = remote, releaseNotes = notes, downloadUrl = apkUrl, fileSize = size)
+    }
+
     suspend fun checkForUpdate(): UpdateInfo? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        lastCheckFailed = false
         try {
             val request = Request.Builder()
                 .url(API_URL)
@@ -99,11 +133,12 @@ class AppUpdateChecker @Inject constructor(
 
             val response = okHttpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                Log.e(TAG, "Failed to check for updates: ${response.code}")
-                return@withContext null
+                Log.e(TAG, "Update API refused (${response.code}) — using the website check")
+                response.close()
+                return@withContext runCatching { checkViaWebsite() }.getOrElse { lastCheckFailed = true; null }
             }
 
-            val body = response.body?.string() ?: return@withContext null
+            val body = response.body?.string() ?: return@withContext runCatching { checkViaWebsite() }.getOrElse { lastCheckFailed = true; null }
             val release = json.decodeFromString<GithubRelease>(body)
             
             // Clean versions for comparison (e.g., "v1.0.1" -> "1.0.1")
@@ -114,7 +149,6 @@ class AppUpdateChecker @Inject constructor(
             if (isNewerVersion(remoteVersion, localVersion)) {
                 // Find the APK asset
                 // 64-bit phones get Olive.apk, old 32-bit phones Olive_32bit.apk
-                val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
                 val apks = release.assets.filter { it.name.endsWith(".apk") }
                 val apkAsset = (if (is64) apks.firstOrNull { it.name == "Olive.apk" } else apks.firstOrNull { it.name == "Olive_32bit.apk" })
                     ?: apks.firstOrNull()
@@ -129,8 +163,8 @@ class AppUpdateChecker @Inject constructor(
             }
             null
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking for updates", e)
-            null
+            Log.e(TAG, "Error checking for updates — using the website check", e)
+            runCatching { checkViaWebsite() }.getOrElse { lastCheckFailed = true; null }
         }
     }
 

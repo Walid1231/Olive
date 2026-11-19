@@ -66,8 +66,11 @@ class AppUpdateViewModel @Inject constructor(
             _checking.value = true
             val info = updateChecker.checkForUpdate()
             _checking.value = false
-            if (info != null) updateChecker.available.value = info
-            else _messages.tryEmit("You're on the latest version (${BuildConfig.VERSION_NAME})")
+            when {
+                info != null -> updateChecker.available.value = info
+                updateChecker.lastCheckFailed -> _messages.tryEmit("Couldn't reach GitHub — check your internet and try again")
+                else -> _messages.tryEmit("You're on the latest version (${BuildConfig.VERSION_NAME})")
+            }
         }
     }
 
