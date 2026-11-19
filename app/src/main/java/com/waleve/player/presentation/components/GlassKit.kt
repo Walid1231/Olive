@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -88,7 +89,7 @@ val GlassGradientH: Brush = Brush.horizontalGradient(listOf(GlassAccentLight, Gl
 
 /** App-wide background: light gradient + four soft colour blobs (drawn once per frame, no blur pass). */
 @Composable
-fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -109,8 +110,60 @@ fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
                 blob(GlassBlobSky, 0.6f, w * 0.0f, h * 0.70f, r)
                 blob(GlassBlobPeach, 0.6f, w * 0.95f, h * 0.88f, r)
             },
-        content = content,
-    )
+    ) {
+        // The playing song's cover, hugely blurred, glowing through every glass card.
+        // Loaded tiny (48 px) and stretched → a soft blur on every Android version;
+        // Android 12+ adds a real blur on top. Cross-fades when the song changes.
+        androidx.compose.animation.Crossfade(
+            targetState = artwork,
+            animationSpec = androidx.compose.animation.core.tween(900),
+            label = "bgArt",
+        ) { art ->
+            if (art != null) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                Box(Modifier.fillMaxSize()) {
+                    coil.compose.AsyncImage(
+                        model = remember(art) {
+                            coil.request.ImageRequest.Builder(ctx).data(art).size(48).allowHardware(false).crossfade(false).build()
+                        },
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { scaleX = 1.35f; scaleY = 1.35f; alpha = 0.95f }
+                            .then(
+                                if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
+                                else Modifier
+                            ),
+                    )
+                    // milky wash so dark text stays readable on any cover
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.62f))
+                            )
+                        )
+                    )
+                    // a couple of soft light streaks (like the glassmorphism reference)
+                    Box(
+                        Modifier.fillMaxSize().drawBehind {
+                            val w = size.width; val h = size.height
+                            drawCircle(
+                                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent), center = Offset(w * 0.15f, h * 0.12f), radius = w * 0.6f),
+                                radius = w * 0.6f, center = Offset(w * 0.15f, h * 0.12f),
+                            )
+                            drawCircle(
+                                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), center = Offset(w * 0.9f, h * 0.75f), radius = w * 0.55f),
+                                radius = w * 0.55f, center = Offset(w * 0.9f, h * 0.75f),
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        content()
+    }
 }
 
 /**

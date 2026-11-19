@@ -35,7 +35,10 @@ fun WaLeveAppContent() {
     val isNightMode = false   // Olive 1.2: light glass only
 
     WaLeveTheme(isNightMode = false) {
-      com.waleve.player.presentation.components.GlassBackground {
+      // The playing song's cover becomes the blurred backdrop behind all the glass
+      val bgPlayer: PlayerViewModel = hiltViewModel()
+      val bgState by bgPlayer.playerState.collectAsStateWithLifecycle()
+      com.waleve.player.presentation.components.GlassBackground(artwork = bgState.shownSong?.albumArtUri) {
         val navController = rememberNavController()
         val playerViewModel: PlayerViewModel = hiltViewModel()
         val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()

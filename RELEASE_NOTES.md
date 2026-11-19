@@ -13,6 +13,7 @@
 - Tapping a search result queues the other results after it.
 
 ### Looks
+- **Blurred-cover glass**: the cover of the song you're playing becomes a soft, blurred backdrop behind the whole app. All the glass cards float over it, and it fades smoothly when the song changes. With nothing playing, the pastel glass background stays.
 - **No more big empty space at the top**: every screen sits higher. The status-bar gap was being added twice.
 - **Search**: compact header, a purple **Audiobooks banner** at the top of Discover, an Audiobooks chip with a book icon, and an "🎧 Audiobook" badge on book covers.
 - **Library**: Songs and Audiobooks sit in one box. Each side shows an icon, its name and its count ("2 songs", "23 chapters"), with a sliding green pill.
