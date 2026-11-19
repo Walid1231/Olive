@@ -180,7 +180,7 @@ fun GlassCard(
 }
 
 @Composable
-fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, count: Int? = null) {
+fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, count: Int? = null, icon: ImageVector? = null) {
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = modifier
@@ -193,6 +193,7 @@ fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: M
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        icon?.let { Icon(it, null, tint = if (selected) Color.White else GlassAccent, modifier = Modifier.size(16.dp)) }
         Text(label, color = if (selected) Color.White else GlassSub, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
         if (count != null) {
             Text(
@@ -252,16 +253,19 @@ fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) 
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
-                    Text(opt.label, color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    opt.count?.let { c ->
-                        Spacer(Modifier.width(6.dp))
-                        Box(
-                            Modifier.clip(RoundedCornerShape(10.dp))
-                                .background(if (on) Color.White.copy(alpha = 0.25f) else GlassInk.copy(alpha = 0.06f))
-                                .padding(horizontal = 7.dp, vertical = 2.dp)
-                        ) { Text("$c", color = fg, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
-                    }
+                    opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)) }
+                    // label and count together in one piece of text (no separate number box)
+                    Text(
+                        androidx.compose.ui.text.buildAnnotatedString {
+                            append(opt.label)
+                            opt.count?.let { c ->
+                                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold, color = fg.copy(alpha = if (on) 0.8f else 0.65f)))
+                                append("  ·  $c")
+                                pop()
+                            }
+                        },
+                        color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

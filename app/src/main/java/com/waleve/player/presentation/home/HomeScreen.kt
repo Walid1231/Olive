@@ -106,7 +106,7 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         // ── Header ──

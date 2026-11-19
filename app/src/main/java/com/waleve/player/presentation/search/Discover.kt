@@ -32,6 +32,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shuffle
@@ -110,7 +114,13 @@ fun DiscoverContent(
         if (chips.isNotEmpty()) item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { GlassChip("For you", selectedChip == null, { onChip(null) }) }
-                items(chips.filter { it.params != null }) { c -> GlassChip(c.title, selectedChip == c.title, { onChip(c) }) }
+                items(chips.filter { it.params != null }) { c ->
+                    val book = c.params == YouTubeMusicBrowser.AUDIOBOOKS
+                    GlassChip(
+                        if (book) "Audiobooks" else c.title, selectedChip == c.title, { onChip(c) },
+                        icon = if (book) Icons.AutoMirrored.Rounded.MenuBook else null,
+                    )
+                }
             }
         }
         if (loading) item {
@@ -132,9 +142,46 @@ fun DiscoverContent(
                     QuickSearches(onSearch)
                 }
             }
-            else -> home?.sections.orEmpty().forEach { section ->
+            else -> {
+                // Audiobooks banner on the main feed
+                val bookChip = chips.firstOrNull { it.params == YouTubeMusicBrowser.AUDIOBOOKS }
+                if (selectedChip == null && bookChip != null) item(key = "bookBanner") { AudiobookBanner { onChip(bookChip) } }
+                home?.sections.orEmpty().forEach { section ->
                 item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload) }
+                }
             }
+        }
+    }
+}
+
+/** Big tappable banner that opens the Audiobooks shelves. */
+@Composable
+private fun AudiobookBanner(onClick: () -> Unit) {
+    val purple = listOf(Color(0xFF8E7CFF), Color(0xFF5B4FD6), Color(0xFF2E8FA8))
+    Box(
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(116.dp)
+            .springClick(onClick = onClick)
+            .shadow(14.dp, RoundedCornerShape(26.dp), ambientColor = Color(0xFF5B4FD6), spotColor = Color(0xFF5B4FD6))
+            .clip(RoundedCornerShape(26.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(purple)),
+    ) {
+        // soft glows
+        Box(Modifier.align(Alignment.TopEnd).offset(x = 30.dp, y = (-30).dp).size(140.dp).clip(CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White.copy(alpha = 0.28f), Color.Transparent))))
+        Box(Modifier.align(Alignment.BottomStart).offset(x = (-20).dp, y = 40.dp).size(120.dp).clip(CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0xFF46C190).copy(alpha = 0.35f), Color.Transparent))))
+        Row(Modifier.fillMaxSize().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("AUDIOBOOKS", color = Color.White.copy(alpha = 0.8f), fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+                Spacer(Modifier.height(2.dp))
+                Text("Stories for every mood", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text("Novels, thrillers, Sunday Suspense, bhuter golpo…", color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier.size(62.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = Color.White, modifier = Modifier.size(32.dp)) }
         }
     }
 }
@@ -227,10 +274,16 @@ private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, onClick: () -> U
                         .background(Color.Black.copy(alpha = 0.45f)).springClick(onClick = onDownload),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.CloudDownload, "Download", tint = Color.White, modifier = Modifier.size(18.dp)) }
-                Box(
-                    Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 7.dp, vertical = 3.dp),
-                ) { Text("📚 BOOK", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold) }
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(10.dp))
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFA08CFF), Color(0xFF6A5ACD))))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Headphones, null, tint = Color.White, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Audiobook", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -306,7 +359,7 @@ fun YtCollectionScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {

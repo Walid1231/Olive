@@ -261,7 +261,7 @@ class YouTubeMusicBrowser @Inject constructor(
         // English first: drop Indian-language shelves
         val music = sections.distinctBy { it.title }.filterNot { INDIAN.containsMatchIn(it.title) || INDIAN.containsMatchIn(it.strapline.orEmpty()) }
         val all = books?.await().orEmpty() + music
-        val home = YtHome(listOf(YtChip("📚 Audiobooks", AUDIOBOOKS)) + chips.filter { it.title != "Podcasts" }, all, System.currentTimeMillis())
+        val home = YtHome(listOf(YtChip("Audiobooks", AUDIOBOOKS)) + chips.filter { it.title != "Podcasts" }, all, System.currentTimeMillis())
         if (params == null && all.isNotEmpty()) runCatching { cacheFile.writeText(json.encodeToString(home)) }
         home
     }

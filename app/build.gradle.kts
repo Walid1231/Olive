@@ -25,8 +25,8 @@ android {
         applicationId = "com.waleve.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.5.3"
+        versionCode = 18
+        versionName = "1.5.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

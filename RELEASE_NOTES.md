@@ -1,4 +1,17 @@
-## Olive 1.5.3 · Online songs play & download again
+## Olive 1.5.4 · Online songs play again + tidier screens
+
+### Online songs play & download again
+- Since late 2025 YouTube makes downloaders solve a small JavaScript puzzle. Olive already contained a JavaScript engine (QuickJS), but yt-dlp wasn't using it. Now it does.
+- Olive first tries YouTube's Android VR route, which needs no puzzle and starts faster. It falls back automatically if that fails.
+- If a song can't be streamed, a message says so and the next song plays, instead of nothing happening.
+
+### Looks
+- **No more big empty space at the top**: every screen sits higher. The status-bar gap was being added twice.
+- **Search**: compact header, a purple **Audiobooks banner** at the top of Discover, an Audiobooks chip with a book icon, and an "🎧 Audiobook" badge on book covers.
+- **Library**: Songs and Audiobooks sit in one box. Each side shows an icon, its name and its count ("2 songs", "23 chapters"), with a sliding green pill.
+- The count now sits inside the same pill as the label everywhere (no separate number box).
+
+### (1.5.3, combined above)
 
 - **Fixed: online songs wouldn't play or download.** Since late 2025 YouTube makes downloaders solve a small JavaScript puzzle. Olive already contained a JavaScript engine (QuickJS), but yt-dlp wasn't using it. Now it does.
 - **Faster start**: Olive first asks YouTube with its Android VR app identity, which doesn't need the puzzle at all. If that fails, it falls back automatically.

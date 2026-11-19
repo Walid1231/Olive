@@ -1,6 +1,9 @@
 package com.waleve.player.presentation.library
 
 import androidx.compose.ui.unit.sp
+import com.waleve.player.presentation.components.GlassGradientH
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -164,7 +167,7 @@ fun LibraryScreen(
     Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         // ── Header ──
         Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Library", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, modifier = Modifier.weight(1f))
@@ -198,15 +201,10 @@ fun LibraryScreen(
             }
         }
         // ── Songs | Audiobooks ──
-        GlassSegmented(
-            options = listOf(
-                SegmentOption("Songs", Icons.AutoMirrored.Filled.QueueMusic, songs.size),
-                SegmentOption("Audiobooks", Icons.AutoMirrored.Filled.MenuBook, audiobooks.size),
-            ),
-            selected = if (isBooks) 1 else 0,
-            onSelect = { viewModel.selectTab(if (it == 1) 1 else 0) },
+        KindSwitch(
+            songs = songs.size, books = audiobooks.size, booksSelected = isBooks,
+            onSelect = { viewModel.selectTab(if (it) 1 else 0) },
             modifier = Modifier.padding(horizontal = 20.dp),
-            height = 50.dp,
         )
         Spacer(Modifier.height(12.dp))
 
@@ -850,6 +848,60 @@ private fun FoldersTab(
                     tint = gc.textMuted,
                     modifier = Modifier.size(20.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Songs | Audiobooks in ONE glass box: a gradient pill slides under the chosen side; each side
+ * shows an icon bubble, the name and its count together.
+ */
+@Composable
+private fun KindSwitch(songs: Int, books: Int, booksSelected: Boolean, onSelect: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.65f, elevation = 0.dp).padding(5.dp)
+    ) {
+        val half = maxWidth / 2
+        val x by androidx.compose.animation.core.animateDpAsState(
+            if (booksSelected) half else 0.dp,
+            androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+            label = "kindX",
+        )
+        Box(
+            Modifier.offset(x = x).width(half).height(60.dp)
+                .shadow(10.dp, RoundedCornerShape(22.dp), ambientColor = GlassAccent, spotColor = GlassAccent)
+                .clip(RoundedCornerShape(22.dp)).background(GlassGradientH)
+        )
+        Row(Modifier.fillMaxWidth().height(60.dp)) {
+            listOf(
+                Triple(false, Icons.AutoMirrored.Filled.QueueMusic, "Songs" to "$songs ${if (songs == 1) "song" else "songs"}"),
+                Triple(true, Icons.AutoMirrored.Filled.MenuBook, "Audiobooks" to "$books ${if (books == 1) "chapter" else "chapters"}"),
+            ).forEach { (isBook, icon, text) ->
+                val on = isBook == booksSelected
+                val fg by androidx.compose.animation.animateColorAsState(if (on) Color.White else GlassInk, androidx.compose.animation.core.tween(220), label = "kindFg")
+                val sub by androidx.compose.animation.animateColorAsState(if (on) Color.White.copy(alpha = 0.85f) else GlassSub, androidx.compose.animation.core.tween(220), label = "kindSub")
+                Row(
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(22.dp))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null, enabled = !on,
+                        ) { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(isBook) }
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(36.dp).clip(CircleShape)
+                            .background(if (on) Color.White.copy(alpha = 0.22f) else GlassAccent.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(icon, null, tint = if (on) Color.White else GlassAccent, modifier = Modifier.size(19.dp)) }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(text.first, color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1)
+                        Text(text.second, color = sub, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, maxLines = 1)
+                    }
+                }
             }
         }
     }

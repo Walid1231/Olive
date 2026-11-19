@@ -109,19 +109,19 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 18.dp, bottom = 12.dp),
+                    .padding(top = 6.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Search",
                         style = MaterialTheme.typography.headlineSmall,
-                        fontSize = 24.sp,
+                        fontSize = 28.sp,
                         color = gc.textPrimary,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    // "STREAM" source badge
+                    // source badge
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))

@@ -227,7 +227,7 @@ fun GroupPlaylistsScreen(onBack: () -> Unit, onOpen: (String) -> Unit, vm: Group
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -329,7 +329,7 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {

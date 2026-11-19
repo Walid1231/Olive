@@ -138,7 +138,7 @@ fun DownloadScreen(
                         androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
                 )
                 .padding(horizontal = 20.dp)
-                .padding(top = 20.dp, bottom = 8.dp),
+                .padding(top = 6.dp, bottom = 8.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

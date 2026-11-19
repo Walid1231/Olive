@@ -85,6 +85,8 @@ fun WaLeveAppContent() {
 
         Scaffold(
             containerColor = Color.Transparent,
+            // Screens handle the status bar themselves; don't add it twice (that was the big empty gap on top)
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 if (showBottomBar) {
                     Column(modifier = Modifier.navigationBarsPadding()) {
