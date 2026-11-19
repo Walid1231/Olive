@@ -1,4 +1,10 @@
-## Olive 1.5.2 · Update check fix
+## Olive 1.5.3 · Online songs play & download again
+
+- **Fixed: online songs wouldn't play or download.** Since late 2025 YouTube makes downloaders solve a small JavaScript puzzle. Olive already contained a JavaScript engine (QuickJS), but yt-dlp wasn't using it. Now it does.
+- **Faster start**: Olive first asks YouTube with its Android VR app identity, which doesn't need the puzzle at all. If that fails, it falls back automatically.
+- If a song really can't be streamed, a message says so and Olive moves on to the next song, instead of doing nothing.
+
+### From 1.5.2 — · Update check fix
 
 - **"Check for updates" works on every network.** GitHub allows only 60 version checks an hour per internet address, and mobile networks share addresses. When that limit was used up, Olive wrongly said you were on the latest version. It now falls back to a check without that limit.
 - If GitHub really can't be reached, it says so instead of "latest version".

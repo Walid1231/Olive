@@ -268,6 +268,10 @@ class PlaybackController @Inject constructor(
 
     private var queueJob: Job? = null
 
+    /** Short messages for the user (e.g. a song that couldn't be streamed). */
+    private val _messages = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val messages: kotlinx.coroutines.flow.SharedFlow<String> = _messages
+
     private fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id.toString())
         .setUri(path)
@@ -314,9 +318,15 @@ class PlaybackController @Inject constructor(
             var first: Song? = null
             while (firstIdx < songs.size && first == null) {
                 first = resolveStream(songs[firstIdx])
-                if (first == null) firstIdx++
+                if (first == null) {
+                    _messages.tryEmit("Couldn't play “${songs[firstIdx].title}” — trying the next one")
+                    firstIdx++
+                }
             }
-            if (first == null) return@launch
+            if (first == null) {
+                _messages.tryEmit("YouTube didn't give us these songs right now. Check your internet and try again in a minute.")
+                return@launch
+            }
             val ordered = mutableListOf(first)
             songMap[first.id.toString()] = first
             currentQueue = ordered.toList()

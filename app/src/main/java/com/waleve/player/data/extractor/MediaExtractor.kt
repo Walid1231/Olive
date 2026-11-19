@@ -124,6 +124,40 @@ class MediaExtractor @Inject constructor(
         }
     }
 
+    // ─── YouTube needs a JavaScript solver since late 2025 ─────────────────
+    // yt-dlp only looks for Deno by default. Olive ships QuickJS (libqjs.so), so we point
+    // yt-dlp at it. We also try YouTube's Android VR client first: it needs no JS at all
+    // and is the fastest. If that fails, yt-dlp's normal clients run with QuickJS.
+
+    private val qjsPath: String? by lazy {
+        java.io.File(context.applicationInfo.nativeLibraryDir, "libqjs.so").takeIf { it.exists() }?.absolutePath
+    }
+    @Volatile private var jsOptionSupported = true
+
+    private fun <T> runYouTube(url: String, build: (YoutubeDLRequest) -> Unit, exec: (YoutubeDLRequest) -> T): T {
+        var last: Exception? = null
+        for (vrClient in listOf(true, false)) {
+            repeat(2) {
+                val req = YoutubeDLRequest(url)
+                build(req)
+                if (jsOptionSupported && qjsPath != null) req.addOption("--js-runtimes", "quickjs:$qjsPath")
+                if (vrClient) req.addOption("--extractor-args", "youtube:player_client=android_vr")
+                try {
+                    return exec(req)
+                } catch (e: Exception) {
+                    last = e
+                    val m = e.message.orEmpty()
+                    // An older yt-dlp that doesn't know the option: drop it and try again
+                    if (jsOptionSupported && m.contains("js-runtimes") && (m.contains("no such option") || m.contains("unrecognized"))) {
+                        jsOptionSupported = false
+                    } else return@repeat
+                }
+            }
+            if (last is InterruptedException || last is kotlinx.coroutines.CancellationException) break
+        }
+        throw last ?: Exception("YouTube extraction failed")
+    }
+
     /**
      * Fetch metadata and available formats for a given URL.
      */
@@ -132,7 +166,7 @@ class MediaExtractor @Inject constructor(
             initialize()
             ensureUpdated() // Update to latest yt-dlp to bypass YouTube anti-bot
 
-            val info: VideoInfo = YoutubeDL.getInstance().getInfo(url)
+            val info: VideoInfo = runYouTube(url, {}, { YoutubeDL.getInstance().getInfo(it) })
 
             val title = info.title ?: "Unknown"
             val artist = info.uploader ?: "Unknown Artist"
@@ -326,14 +360,14 @@ class MediaExtractor @Inject constructor(
             ensureUpdated()
 
             val url = "https://music.youtube.com/watch?v=$videoId"
-            val request = YoutubeDLRequest(url)
-            request.addOption("-f", "bestaudio")
-            request.addOption("--get-url")
-            request.addOption("--no-playlist")
-
-            val response = YoutubeDL.getInstance().execute(request)
-            val streamUrl = response.out.trim().lines().firstOrNull { it.startsWith("http") }
-            streamUrl
+            runYouTube(url, { request ->
+                request.addOption("-f", "bestaudio/best")
+                request.addOption("--get-url")
+                request.addOption("--no-playlist")
+            }) { request ->
+                val response = YoutubeDL.getInstance().execute(request)
+                response.out.trim().lines().firstOrNull { it.startsWith("http") } ?: throw Exception("no stream url")
+            }
         } catch (e: Exception) {
             android.util.Log.e("MediaExtractor", "extractStreamUrl failed for $videoId", e)
             null
@@ -350,11 +384,10 @@ class MediaExtractor @Inject constructor(
             ensureUpdated()
 
             val url = "https://music.youtube.com/watch?v=$videoId"
-            val request = YoutubeDLRequest(url)
-            request.addOption("-J")
-            request.addOption("--no-playlist")
-
-            val response = YoutubeDL.getInstance().execute(request)
+            val response = runYouTube(url, { request ->
+                request.addOption("-J")
+                request.addOption("--no-playlist")
+            }) { YoutubeDL.getInstance().execute(it) }
             val json = org.json.JSONObject(response.out)
             val formats = json.optJSONArray("formats") ?: return@withContext emptyList()
 
@@ -463,62 +496,63 @@ class MediaExtractor @Inject constructor(
             cacheDirFile.mkdirs()
             val beforeFiles = cacheDirFile.listFiles()?.map { it.absolutePath }?.toSet() ?: emptySet()
 
-            val request = YoutubeDLRequest(url)
-            request.addOption("-o", "${cacheDirFile.absolutePath}/%(title).120B [%(id)s].%(ext)s")
-            request.addOption("--no-playlist")
-            request.addOption("--no-mtime")
-            request.addOption("--embed-metadata")
-            // Print the final file path after all post-processing (conversion, merging, tagging)
-            request.addOption("--print", "after_move:filepath")
-            request.addOption("--no-simulate")
-            request.addOption("--progress")   // --print implies --quiet; keep progress lines for the UI
-            request.addOption("--newline")
+            val response = runYouTube(url, { request ->
+                request.addOption("-o", "${cacheDirFile.absolutePath}/%(title).120B [%(id)s].%(ext)s")
+                request.addOption("--no-playlist")
+                request.addOption("--no-mtime")
+                request.addOption("--embed-metadata")
+                // Print the final file path after all post-processing (conversion, merging, tagging)
+                request.addOption("--print", "after_move:filepath")
+                request.addOption("--no-simulate")
+                request.addOption("--progress")   // --print implies --quiet; keep progress lines for the UI
+                request.addOption("--newline")
 
-            val fid = format.formatId
-            when {
-                fid.startsWith(CONVERT_PREFIX) -> {
-                    // Audio conversion: mp3 / m4a / opus / flac / wav / vorbis(ogg) / alac
-                    val codec = fid.removePrefix(CONVERT_PREFIX)
-                    request.addOption("-f", "bestaudio/best")
-                    request.addOption("-x")
-                    request.addOption("--audio-format", codec)
-                    request.addOption("--audio-quality", if (codec == "mp3") "320K" else "0")
+                val fid = format.formatId
+                when {
+                    fid.startsWith(CONVERT_PREFIX) -> {
+                        // Audio conversion: mp3 / m4a / opus / flac / wav / vorbis(ogg) / alac
+                        val codec = fid.removePrefix(CONVERT_PREFIX)
+                        request.addOption("-f", "bestaudio/best")
+                        request.addOption("-x")
+                        request.addOption("--audio-format", codec)
+                        request.addOption("--audio-quality", if (codec == "mp3") "320K" else "0")
+                    }
+                    fid.startsWith(VIDEO_PREFIX) -> {
+                        val h = fid.removePrefix(VIDEO_PREFIX).toIntOrNull()
+                        val sel = if (h == null) "bv*+ba/b" else "bv*[height<=$h]+ba/b[height<=$h]/b"
+                        request.addOption("-f", sel)
+                        request.addOption("--merge-output-format", "mp4")
+                        request.addOption("--remux-video", "mp4")
+                    }
+                    fid == "mp3_320" -> {           // legacy id kept for old callers
+                        request.addOption("-x")
+                        request.addOption("--audio-format", "mp3")
+                        request.addOption("--audio-quality", "320K")
+                    }
+                    format.isVideoOnly -> {
+                        request.addOption("-f", "$fid+bestaudio")
+                        request.addOption("--merge-output-format", "mp4")
+                    }
+                    else -> request.addOption("-f", fid)
                 }
-                fid.startsWith(VIDEO_PREFIX) -> {
-                    val h = fid.removePrefix(VIDEO_PREFIX).toIntOrNull()
-                    val sel = if (h == null) "bv*+ba/b" else "bv*[height<=$h]+ba/b[height<=$h]/b"
-                    request.addOption("-f", sel)
-                    request.addOption("--merge-output-format", "mp4")
-                    request.addOption("--remux-video", "mp4")
-                }
-                fid == "mp3_320" -> {           // legacy id kept for old callers
-                    request.addOption("-x")
-                    request.addOption("--audio-format", "mp3")
-                    request.addOption("--audio-quality", "320K")
-                }
-                format.isVideoOnly -> {
-                    request.addOption("-f", "$fid+bestaudio")
-                    request.addOption("--merge-output-format", "mp4")
-                }
-                else -> request.addOption("-f", fid)
-            }
 
-            if (category == DownloadCategory.AUDIOBOOK) {
-                // Each book becomes its own album: playlist title (multi-part books) or the video title
-                request.addOption("--parse-metadata", "%(playlist_title,title)s:%(album)s")
-                request.addOption("--parse-metadata", "%(uploader,channel)s:%(album_artist)s")
-                request.addOption("--embed-chapters")
-            }
+                if (category == DownloadCategory.AUDIOBOOK) {
+                    // Each book becomes its own album: playlist title (multi-part books) or the video title
+                    request.addOption("--parse-metadata", "%(playlist_title,title)s:%(album)s")
+                    request.addOption("--parse-metadata", "%(uploader,channel)s:%(album_artist)s")
+                    request.addOption("--embed-chapters")
+                }
 
-            // Cover art inside the file (MediaStore uses it as album art). WAV can't hold images.
-            val targetExt = expectedExtension(format)
-            if (targetExt !in setOf("wav", "webm")) {
-                request.addOption("--embed-thumbnail")
-                if (category != DownloadCategory.VIDEO) request.addOption("--convert-thumbnails", "jpg")
-            }
-
-            val response = YoutubeDL.getInstance().execute(request, processId) { progress, etaInSeconds, line ->
-                onProgress(progress, etaInSeconds, line ?: "")
+                // Cover art inside the file (MediaStore uses it as album art). WAV can't hold images.
+                val targetExt = expectedExtension(format)
+                if (targetExt !in setOf("wav", "webm")) {
+                    request.addOption("--embed-thumbnail")
+                    if (category != DownloadCategory.VIDEO) request.addOption("--convert-thumbnails", "jpg")
+                }
+            }) { request ->
+                YoutubeDL.getInstance().execute(request, processId) { progress, etaInSeconds, line ->
+                    onProgress(progress, etaInSeconds, line ?: "")
+                }
             }
 
             val printed = response.out.lines().map { it.trim() }

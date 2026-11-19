@@ -58,6 +58,12 @@ fun WaLeveAppContent() {
         val updateViewModel: AppUpdateViewModel = hiltViewModel()
         val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
         
+        // Playback problems (e.g. a stream YouTube refused) as a short toast
+        val appContext = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(Unit) {
+            playerViewModel.playbackController.messages.collect { android.widget.Toast.makeText(appContext, it, android.widget.Toast.LENGTH_LONG).show() }
+        }
+
         // Check for a new release at start and whenever Olive comes back (at most every 6 h)
         val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
         androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
