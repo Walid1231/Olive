@@ -1,0 +1,44 @@
+name: ytm-probe
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          cat > p.py <<'PY'
+          import json, urllib.request, re
+          B="https://music.youtube.com/youtubei/v1/"
+          CTX={"client":{"clientName":"WEB_REMIX","clientVersion":"1.20251110.01.00","hl":"en","gl":"US"}}
+          H={"Content-Type":"application/json","User-Agent":"Mozilla/5.0 Chrome/131.0.0.0","Origin":"https://music.youtube.com","Referer":"https://music.youtube.com/"}
+          def post(ep, extra):
+              r=urllib.request.Request(B+ep+"?prettyPrint=false", data=json.dumps(dict(context=CTX,**extra)).encode(), headers=H)
+              return json.load(urllib.request.urlopen(r, timeout=20))
+          def find(el,key,out=None):
+              out=[] if out is None else out
+              if isinstance(el,dict):
+                  for k,v in el.items():
+                      if k==key and isinstance(v,dict): out.append(v)
+                      else: find(v,key,out)
+              elif isinstance(el,list):
+                  for x in el: find(x,key,out)
+              return out
+          def text(t): return "".join(r.get("text","") for r in (t or {}).get("runs",[]))
+          def ms(d):
+              if not re.fullmatch(r"\d+(:\d{2}){1,2}", d or ""): return 0
+              v=0
+              for p in d.split(":"): v=v*60+int(p)
+              return v*1000
+          for q in ["full audiobook english","bangla audio golpo full","sunday suspense full story","classic novel full audiobook","bhuter golpo audio story","sherlock holmes full audiobook"]:
+              s=post("search",{"query":q,"params":"EgWKAQIQAWoMEA4QChADEAQQCRAF"})
+              rows=find(s,"musicResponsiveListItemRenderer")
+              longs=[]
+              for r in rows:
+                  cols=[text(f["musicResponsiveListItemFlexColumnRenderer"]["text"]) for f in r.get("flexColumns",[])]
+                  parts=" • ".join(c for c in cols[1:] if c).split(" • ")
+                  d=next((p for p in reversed(parts) if re.fullmatch(r"\d+(:\d{2}){1,2}",p.strip())),None)
+                  if ms(d)>=20*60000: longs.append((cols[0][:40],d))
+              print("BOOKS",q,"rows",len(rows),"long",len(longs),longs[:2])
+          h=post("browse",{"browseId":"FEmusic_home"})
+          print("USHOME",[text(x.get("header",{}).get("musicCarouselShelfBasicHeaderRenderer",{}).get("title")) for x in find(h,"musicCarouselShelfRenderer")])
+          PY
+          python3 p.py
