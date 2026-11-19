@@ -1,0 +1,70 @@
+name: ytm-probe
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe YouTube Music API
+        run: |
+          cat > p.py <<'PY'
+          import json, urllib.request
+          B="https://music.youtube.com/youtubei/v1/"
+          CTX={"client":{"clientName":"WEB_REMIX","clientVersion":"1.20251110.01.00","hl":"en","gl":"IN"}}
+          H={"Content-Type":"application/json","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36","Origin":"https://music.youtube.com","Referer":"https://music.youtube.com/","X-YouTube-Client-Name":"67","X-YouTube-Client-Version":"1.20251110.01.00"}
+          def post(ep, extra, q=""):
+              b=dict(context=CTX, **extra)
+              r=urllib.request.Request(B+ep+"?prettyPrint=false"+q, data=json.dumps(b).encode(), headers=H)
+              return json.load(urllib.request.urlopen(r, timeout=20))
+          def find(el,key,out=None):
+              out=[] if out is None else out
+              if isinstance(el,dict):
+                  for k,v in el.items():
+                      if k==key and isinstance(v,dict): out.append(v)
+                      else: find(v,key,out)
+              elif isinstance(el,list):
+                  for x in el: find(x,key,out)
+              return out
+          def text(t): return "".join(r.get("text","") for r in (t or {}).get("runs",[])) or (t or {}).get("simpleText","")
+          h=post("browse",{"browseId":"FEmusic_home"})
+          sh=find(h,"musicCarouselShelfRenderer")
+          print("HOME shelves",len(sh))
+          for s in sh[:8]:
+              hd=s.get("header",{}).get("musicCarouselShelfBasicHeaderRenderer",{})
+              items=s.get("contents",[])
+              kinds=set(list(i.keys())[0] for i in items)
+              first=items[0] if items else {}
+              tr=first.get("musicTwoRowItemRenderer")
+              nav=(tr or {}).get("navigationEndpoint",{})
+              print(" -",text(hd.get("title")),"|",len(items),kinds,"| nav:",list(nav.keys()), (nav.get("browseEndpoint",{}).get("browseEndpointContextSupportedConfigs",{}).get("browseEndpointContextMusicConfig",{}).get("pageType")))
+          chips=find(h,"chipCloudChipRenderer"); print("CHIPS",[text(c.get("text")) for c in chips][:12], "params?", bool(chips and chips[0].get("navigationEndpoint",{}).get("browseEndpoint",{}).get("params")))
+          cont=find(h,"nextContinuationData"); print("CONT",bool(cont))
+          if cont:
+              t=cont[0]["continuation"]
+              n=post("browse",{"continuation":t},"&ctoken=%s&continuation=%s&type=next"%(t,t))
+              print("CONT shelves",len(find(n,"musicCarouselShelfRenderer")), [text(s.get("header",{}).get("musicCarouselShelfBasicHeaderRenderer",{}).get("title")) for s in find(n,"musicCarouselShelfRenderer")][:6])
+          # a playlist from home
+          pl=None
+          for s in sh:
+              for i in s.get("contents",[]):
+                  tr=i.get("musicTwoRowItemRenderer")
+                  if tr and tr.get("navigationEndpoint",{}).get("browseEndpoint",{}).get("browseId","").startswith("VL"):
+                      pl=tr["navigationEndpoint"]["browseEndpoint"]["browseId"]; break
+              if pl: break
+          print("PLAYLIST",pl)
+          if pl:
+              c=post("browse",{"browseId":pl})
+              hk=[k for k in ["musicResponsiveHeaderRenderer","musicDetailHeaderRenderer","musicImmersiveHeaderRenderer","musicEditablePlaylistDetailHeaderRenderer"] if find(c,k)]
+              rows=find(c,"musicResponsiveListItemRenderer")
+              print(" header",hk,"rows",len(rows))
+              if rows:
+                  r=rows[0]; fc=[text(f["musicResponsiveListItemFlexColumnRenderer"]["text"]) for f in r.get("flexColumns",[])]
+                  print(" row0",fc,"vid",r.get("playlistItemData",{}).get("videoId"),"fixed",[text(f["musicResponsiveListItemFixedColumnRenderer"]["text"]) for f in r.get("fixedColumns",[])])
+          s=post("search",{"query":"arijit singh","params":"EgWKAQIIAWoMEA4QChADEAQQCRAF"})
+          rows=find(s,"musicResponsiveListItemRenderer"); print("SEARCH rows",len(rows))
+          for r in rows[:3]:
+              fc=[text(f["musicResponsiveListItemFlexColumnRenderer"]["text"]) for f in r.get("flexColumns",[])]
+              print(" ",fc,"vid",r.get("playlistItemData",{}).get("videoId"))
+          g=post("music/get_search_suggestions",{"input":"arij"})
+          print("SUGG",[text(x.get("suggestion")) for x in find(g,"searchSuggestionRenderer")][:6])
+          PY
+          python3 p.py
