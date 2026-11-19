@@ -161,20 +161,29 @@ class PlaybackController @Inject constructor(
                 val c = mediaController ?: return
                 val song = c.currentMediaItem?.mediaId?.let { songMap[it] }
                 val vid = song?.videoId
-                if (song == null || vid == null || !retried.add(vid)) {
+                val attempt = vid?.let { attempts[it] ?: 0 } ?: 99
+                android.util.Log.e("PlaybackController", "Play error (${error.errorCodeName}) for ${song?.title}, attempt $attempt", error)
+                if (song == null || vid == null || attempt >= 2) {
                     setPending(null)
-                    _messages.tryEmit("Couldn't play “${song?.title ?: "this song"}”")
+                    _messages.tryEmit("Couldn't play “${song?.title ?: "this song"}” (${error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})")
                     return
                 }
-                // The quick link didn't work — get one through yt-dlp and carry on from the same spot
+                attempts[vid] = attempt + 1
                 val idx = c.currentMediaItemIndex
                 val pos = c.currentPosition
                 setPending(song)
                 scope.launch {
                     streamRepository.forget(vid)
-                    val url = streamRepository.getStreamUrlSlow(vid)
-                    if (url == null) { setPending(null); _messages.tryEmit("Couldn't play “${song.title}”"); return@launch }
-                    val fixed = song.copy(path = url)
+                    val path = if (attempt == 0) {
+                        // 2nd try: a link from yt-dlp
+                        streamRepository.getStreamUrlSlow(vid)
+                    } else {
+                        // 3rd try: save the audio and play the file
+                        _messages.tryEmit("Getting “${song.title}” ready…")
+                        streamRepository.downloadForPlayback(vid)
+                    }
+                    if (path == null) { setPending(null); _messages.tryEmit("Couldn't play “${song.title}”"); return@launch }
+                    val fixed = song.copy(path = path)
                     songMap[fixed.id.toString()] = fixed
                     mediaController?.replaceMediaItem(idx, fixed.toMediaItem())
                     mediaController?.seekTo(idx, pos)
@@ -282,8 +291,8 @@ class PlaybackController @Inject constructor(
         _playerState.update { it.copy(loadingSong = song) }
     }
 
-    /** Fast links that failed once → retried through yt-dlp (once per song). */
-    private val retried = mutableSetOf<String>()
+    /** How many fallbacks each YouTube song has used (0 fast link → 1 yt-dlp link → 2 saved file). */
+    private val attempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** What the user did with the controls (Listen Together uses this to share or undo it). */
     sealed interface UserAction {
@@ -349,7 +358,7 @@ class PlaybackController @Inject constructor(
         currentQueue = songs
         if (songs.isEmpty()) return
         val start = startIndex.coerceIn(0, songs.lastIndex)
-        retried.clear()
+        attempts.clear()
         // Show the tapped song right away with a spinner (online songs take a moment)
         if (songs[start].path.startsWith("ytm://") || songs[start].path.startsWith("http")) setPending(songs[start])
 

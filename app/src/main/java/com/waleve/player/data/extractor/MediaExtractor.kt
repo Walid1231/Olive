@@ -398,6 +398,39 @@ class MediaExtractor @Inject constructor(
     }
 
     /**
+     * Last resort when a stream won't play: yt-dlp saves the audio into a small cache and we
+     * play the file (yt-dlp downloads the way YouTube expects). Cache is trimmed to ~400 MB.
+     */
+    suspend fun downloadForPlayback(videoId: String): String? = withContext(Dispatchers.IO) {
+        try {
+            initialize()
+            ensureUpdated()
+            val dir = java.io.File(context.cacheDir, "play_cache").apply { mkdirs() }
+            dir.listFiles()?.firstOrNull { it.name.startsWith("$videoId.") && !it.name.endsWith(".part") && it.length() > 0 }
+                ?.let { it.setLastModified(System.currentTimeMillis()); return@withContext it.absolutePath }
+            // keep the cache small
+            dir.listFiles()?.sortedByDescending { it.lastModified() }?.let { files ->
+                var total = 0L
+                files.forEach { f -> total += f.length(); if (total > 400L * 1024 * 1024) f.delete() }
+            }
+            val url = "https://music.youtube.com/watch?v=$videoId"
+            val out = runYouTube(url, { r ->
+                r.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                r.addOption("-o", "${dir.absolutePath}/%(id)s.%(ext)s")
+                r.addOption("--no-playlist")
+                r.addOption("--no-mtime")
+                r.addOption("--print", "after_move:filepath")
+                r.addOption("--no-simulate")
+            }) { YoutubeDL.getInstance().execute(it) }.out
+            out.lines().map { it.trim() }.lastOrNull { it.startsWith("/") && java.io.File(it).exists() }
+                ?: dir.listFiles()?.firstOrNull { it.name.startsWith("$videoId.") && !it.name.endsWith(".part") }?.absolutePath
+        } catch (e: Exception) {
+            android.util.Log.e("MediaExtractor", "downloadForPlayback failed for $videoId", e)
+            null
+        }
+    }
+
+    /**
      * Extracts all available audio qualities with their real stream URLs.
      * Uses yt-dlp's -J output to parse format URLs.
      */

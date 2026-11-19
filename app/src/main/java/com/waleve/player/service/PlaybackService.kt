@@ -19,7 +19,23 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
+        // YouTube audio links only work when the request says it comes from the same YouTube
+        // app that asked for the link (the link's "c=" tells which). Add that User-Agent.
+        val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+        val upstream = androidx.media3.datasource.DefaultDataSource.Factory(this, http)
+        val youtubeAware = androidx.media3.datasource.ResolvingDataSource.Factory(upstream) { spec ->
+            val uri = spec.uri
+            if (uri.host?.endsWith("googlevideo.com") == true) {
+                val client = uri.getQueryParameter("c").orEmpty()
+                spec.withAdditionalHeaders(YouTubeHeaders.forClient(client))
+            } else spec
+        }
+
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(youtubeAware))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -54,5 +70,24 @@ class PlaybackService : MediaSessionService() {
         }
         mediaSession = null
         super.onDestroy()
+    }
+}
+
+/** The User-Agent each YouTube client uses; googlevideo checks it against the link's "c=". */
+object YouTubeHeaders {
+    const val VR_UA = "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+    private const val ANDROID_UA = "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
+    private const val MUSIC_UA = "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14) gzip"
+    private const val IOS_UA = "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
+    private const val TV_UA = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
+    private const val WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    fun forClient(c: String): Map<String, String> = when {
+        c.equals("ANDROID_VR", true) -> mapOf("User-Agent" to VR_UA)
+        c.equals("ANDROID_MUSIC", true) -> mapOf("User-Agent" to MUSIC_UA)
+        c.startsWith("ANDROID", true) -> mapOf("User-Agent" to ANDROID_UA)
+        c.startsWith("IOS", true) -> mapOf("User-Agent" to IOS_UA)
+        c.startsWith("TV", true) -> mapOf("User-Agent" to TV_UA, "Origin" to "https://www.youtube.com", "Referer" to "https://www.youtube.com/")
+        else -> mapOf("User-Agent" to WEB_UA, "Origin" to "https://www.youtube.com", "Referer" to "https://www.youtube.com/")
     }
 }

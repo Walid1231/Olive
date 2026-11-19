@@ -21,6 +21,9 @@ interface StreamRepository {
     /** yt-dlp only (used when the fast link didn't play). */
     suspend fun getStreamUrlSlow(videoId: String): String?
 
+    /** Last resort: save the audio to a small cache and return the file path. */
+    suspend fun downloadForPlayback(videoId: String): String?
+
     /** Drop a cached link that stopped working. */
     fun forget(videoId: String)
 

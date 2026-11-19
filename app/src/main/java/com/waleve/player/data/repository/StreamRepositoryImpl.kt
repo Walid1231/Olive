@@ -81,6 +81,8 @@ class StreamRepositoryImpl @Inject constructor(
      */
     override fun forget(videoId: String) { urlCache.remove(videoId) }
 
+    override suspend fun downloadForPlayback(videoId: String): String? = mediaExtractor.downloadForPlayback(videoId)
+
     override suspend fun getAvailableQualities(videoId: String): List<AudioQuality> {
         return try {
             mediaExtractor.extractAudioQualities(videoId)

@@ -1,4 +1,13 @@
-## Olive 1.5.5 · Fixes from your screenshots
+## Olive 1.5.5 · Online songs & audiobooks play + fixes
+
+### "Couldn't play" fixed
+- YouTube's audio links only work when the request says it comes from the same YouTube app that asked for the link. Olive's player was sending a generic identity, so every stream was refused. It now sends the right one, the way Echo does.
+- If a stream still fails, Olive tries a second link from yt-dlp. As a last resort it saves the song temporarily and plays it from the phone (cache capped at 400 MB).
+- If something still goes wrong, the message now says why.
+
+### Download sheet, redesigned
+- A header with the title (2 lines) and its length, Audio/Video as a sliding pill, and "SAVE TO" with **Song** / **Audiobook** cards. Each card has an icon and a short explanation, so nothing is cut off.
+- Quality options are glass cards with a **BEST** badge on the recommended one and a round download button.
 
 - **Continue listening follows the player.** While that book is playing it says "Now listening", with a **Pause** button and live progress. **Resume** carries on from where you are instead of restarting.
 - If the app ever loses its link to the music service, it reconnects by itself, so play/pause always shows the truth.
