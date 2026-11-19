@@ -389,229 +389,74 @@ private fun FormatSelectionContent(
     info: MediaInfo,
     onDownload: (MediaFormat, Boolean) -> Unit,
 ) {
-    val gc = LocalGhibliColors.current
-    var showAdvanced by remember { mutableStateOf(false) }
     // Long uploads (> 40 min) are probably audiobooks / lectures — preselect that
     var asAudiobook by remember(info.title) { mutableStateOf(info.duration >= 40 * 60) }
-    val audioFormats = info.quickFormats.filter { it.isAudioOnly }
-    val videoFormats = info.quickFormats.filter { !it.isAudioOnly }
+    val ink = com.waleve.player.presentation.theme.GlassInk
+    val sub = com.waleve.player.presentation.theme.GlassSub
 
-    Column(modifier = Modifier.animateContentSize(animationSpec = tween(400))) {
-        // ── Video Info Card ─────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(gc.surfaceCard)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Column {
+        // ── What you're downloading ──
+        Column(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(com.waleve.player.presentation.theme.GlassFill.copy(alpha = if (com.waleve.player.presentation.theme.GlassMode.dark) 0.7f else 0.78f))
+                .border(1.dp, com.waleve.player.presentation.components.GlassEdge, RoundedCornerShape(22.dp))
+                .padding(10.dp),
         ) {
-            // Thumbnail
-            AsyncImage(
-                model = info.thumbnailUrl,
-                contentDescription = info.title,
-                modifier = Modifier
-                    .size(width = 100.dp, height = 56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(gc.accent.copy(alpha = 0.1f)),
-                contentScale = ContentScale.Crop,
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = info.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = gc.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.SemiBold,
+            Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(16.dp))) {
+                AsyncImage(
+                    model = info.thumbnailUrl,
+                    contentDescription = info.title,
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        .background(com.waleve.player.presentation.theme.GlassAccent.copy(alpha = 0.12f)),
+                    contentScale = ContentScale.Crop,
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${info.artist} • ${formatDuration(info.duration)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = gc.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ── Audio ───────────────────────────────────────
-        Text(
-            text = "Audio",
-            style = MaterialTheme.typography.titleSmall,
-            color = gc.textPrimary,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-        com.waleve.player.presentation.components.SaveAsToggle(
-            asAudiobook = asAudiobook,
-            onChange = { asAudiobook = it },
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-        audioFormats.forEach { format ->
-            FormatRow(
-                format = format,
-                onClick = { onDownload(format, asAudiobook) },
-            )
-        }
-
-        // ── Video ───────────────────────────────────────
-        if (videoFormats.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Video  ·  saved to Movies/Olive",
-                style = MaterialTheme.typography.titleSmall,
-                color = gc.textPrimary,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            videoFormats.forEach { format ->
-                FormatRow(
-                    format = format,
-                    onClick = { onDownload(format, false) },
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── Toggle Advanced ────────────────────────────
-        Row(
-            modifier = Modifier.springClick { showAdvanced = !showAdvanced }
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                imageVector = if (showAdvanced) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                tint = gc.accent,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = if (showAdvanced) "Hide Advanced" else "More Formats (${info.advancedFormats.size})",
-                style = MaterialTheme.typography.labelMedium,
-                color = gc.accent,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-
-        // ── Advanced Format List ───────────────────────
-        AnimatedVisibility(
-            visible = showAdvanced,
-            enter = expandVertically(animationSpec = tween(400)),
-            exit = shrinkVertically(animationSpec = tween(300)),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 120.dp)
-            ) {
-                info.advancedFormats.forEach { format ->
-                    FormatRow(
-                        format = format,
-                        onClick = { onDownload(format, asAudiobook && format.isAudioOnly) },
+                Box(
+                    Modifier.fillMaxWidth().fillMaxHeight().background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f),
+                        )
                     )
-                }
-            }
-        }
-    }
-}
-
-// ── Single Format Row ────────────────────────────────────────────────────────
-
-@Composable
-private fun FormatRow(
-    format: MediaFormat,
-    onClick: () -> Unit,
-) {
-    val gc = LocalGhibliColors.current
-    val icon: ImageVector = when {
-        format.formatId == "convert_flac" || format.formatId == "convert_wav" -> Icons.Filled.HighQuality
-        format.formatId == "mp3_320" || format.formatId == "convert_mp3" -> Icons.Filled.MusicNote
-        format.isAudioOnly                  -> Icons.Filled.AudioFile
-        format.height >= 720                -> Icons.Filled.HighQuality
-        !format.isAudioOnly                 -> Icons.Filled.Videocam
-        else                                -> Icons.Filled.CloudDownload
-    }
-    val iconTint = when {
-        format.formatId == "mp3_320" || format.formatId == "convert_mp3" -> Color(0xFFE57373)
-        format.formatId == "convert_flac" || format.formatId == "convert_wav" -> Color(0xFFFFB74D)
-        format.isAudioOnly           -> gc.accent
-        format.height >= 720         -> Color(0xFF64B5F6)
-        else                         -> gc.textMuted
-    }
-
-    Row(
-        modifier = Modifier.springClick(onClick = onClick)
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(gc.surfaceCard)
-            .border(1.dp, gc.surfaceCard, RoundedCornerShape(12.dp))
-            
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Icon
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(iconTint.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, null, tint = iconTint, modifier = Modifier.size(18.dp))
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Label + tag
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = format.label,
-                style = MaterialTheme.typography.titleSmall,
-                color = gc.textPrimary,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Tag badge
-                Text(
-                    text = format.tag,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = gc.accent,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(gc.accent.copy(alpha = 0.1f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
-                if (format.fileSize > 0) {
-                    Spacer(modifier = Modifier.width(8.dp))
+                if (info.duration > 0) {
                     Text(
-                        text = formatFileSize(format.fileSize),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = gc.textMuted,
+                        formatDuration(info.duration),
+                        color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                if (info.duration >= 40 * 60) {
+                    Text(
+                        "Looks like an audiobook",
+                        color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(10.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(com.waleve.player.presentation.components.GlassGradientH)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                info.title, color = ink, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, lineHeight = 21.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Text(
+                info.artist, color = sub, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
         }
 
-        // Download arrow
-        Icon(
-            Icons.Filled.CloudDownload,
-            null,
-            tint = gc.accent,
-            modifier = Modifier.size(22.dp),
+        Spacer(Modifier.height(16.dp))
+
+        com.waleve.player.presentation.components.FormatPicker(
+            audio = info.quickFormats.filter { it.isAudioOnly },
+            video = info.quickFormats.filter { !it.isAudioOnly },
+            asAudiobook = asAudiobook,
+            onAsAudiobook = { asAudiobook = it },
+            onPick = onDownload,
+            advanced = info.advancedFormats,
         )
     }
 }
@@ -1014,9 +859,10 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 private fun formatDuration(seconds: Long): String {
-    val mins = seconds / 60
+    val h = seconds / 3600
+    val mins = (seconds % 3600) / 60
     val secs = seconds % 60
-    return "%d:%02d".format(mins, secs)
+    return if (h > 0) "%d:%02d:%02d".format(h, mins, secs) else "%d:%02d".format(mins, secs)
 }
 
 // ── Playlist Selection ────────────────────────────────────────────

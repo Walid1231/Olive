@@ -64,7 +64,6 @@ fun DownloadFormatSheet(
     onDismiss: () -> Unit,
 ) {
     val gc = LocalGhibliColors.current
-    var tab by remember { mutableIntStateOf(0) }
     var asAudiobook by remember(title) { mutableStateOf(durationSec >= 40 * 60) }
     val audio = remember(durationSec) { MediaExtractor.audioConversionChoices(durationSec) }
     val video = remember(durationSec) { MediaExtractor.videoChoices(durationSec, maxHeight = 2160) }
@@ -108,93 +107,15 @@ fun DownloadFormatSheet(
             }
             Spacer(Modifier.height(16.dp))
 
-            // ── Audio / Video ──
-            GlassSegmented(
-                options = listOf(SegmentOption("Audio", Icons.Rounded.GraphicEq), SegmentOption("Video", Icons.Rounded.Videocam)),
-                selected = tab, onSelect = { tab = it }, height = 44.dp,
-            )
-            Spacer(Modifier.height(14.dp))
-
-            if (tab == 0) {
-                Text("SAVE TO", color = com.waleve.player.presentation.theme.GlassSub, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.2.sp)
-                Spacer(Modifier.height(6.dp))
-                SaveAsToggle(asAudiobook = asAudiobook, onChange = { asAudiobook = it })
-                Spacer(Modifier.height(14.dp))
-            }
-            Text("CHOOSE QUALITY", color = com.waleve.player.presentation.theme.GlassSub, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.2.sp)
-            Spacer(Modifier.height(6.dp))
-
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                (if (tab == 0) audio else video).forEachIndexed { i, f ->
-                    FormatChoiceRow(f, recommended = i == 0) { onPick(f, tab == 0 && asAudiobook) }
-                }
-                if (tab == 0) {
-                    Text(
-                        "Online sources are lossy (about 128–160 kbps). FLAC and WAV keep that exact sound in a lossless file — bigger, not better.",
-                        color = com.waleve.player.presentation.theme.GlassMuted, fontSize = 11.5.sp, lineHeight = 15.sp,
-                        modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
-                    )
-                }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                FormatPicker(
+                    audio = audio,
+                    video = video,
+                    asAudiobook = asAudiobook,
+                    onAsAudiobook = { asAudiobook = it },
+                    onPick = onPick,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun FormatChoiceRow(format: MediaFormat, recommended: Boolean = false, onClick: () -> Unit) {
-    val gc = LocalGhibliColors.current
-    val lossless = format.extension == "flac" || format.extension == "wav"
-    val tint = when {
-        !format.isAudioOnly -> Color(0xFF64B5F6)
-        lossless -> Color(0xFFFFB74D)
-        else -> gc.accent
-    }
-    Row(
-        modifier = Modifier
-            .springClick(onClick = onClick)
-            .fillMaxWidth()
-            .glass(RoundedCornerShape(18.dp), alpha = 0.75f)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(tint.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                when {
-                    !format.isAudioOnly -> Icons.Rounded.Videocam
-                    lossless -> Icons.Rounded.HighQuality
-                    else -> Icons.Rounded.MusicNote
-                },
-                null, tint = tint, modifier = Modifier.size(20.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(format.label, color = com.waleve.player.presentation.theme.GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (recommended) {
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(GlassGradientH).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Text("BEST", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 9.5.sp)
-                    }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(format.tag, style = MaterialTheme.typography.labelSmall, color = tint)
-                if (format.fileSize > 0) {
-                    Text("  ·  ~${"%.0f".format(format.fileSize / 1_048_576.0)} MB",
-                        style = MaterialTheme.typography.labelSmall, color = gc.textMuted)
-                }
-            }
-        }
-        Box(
-            Modifier.size(38.dp).clip(CircleShape).background(GlassGradient),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Rounded.Download, "Download", tint = Color.White, modifier = Modifier.size(20.dp)) }
     }
 }
