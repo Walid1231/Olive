@@ -38,10 +38,20 @@ jobs:
               print(" -",text(hd.get("title")),"|",len(items),kinds,"| nav:",list(nav.keys()), (nav.get("browseEndpoint",{}).get("browseEndpointContextSupportedConfigs",{}).get("browseEndpointContextMusicConfig",{}).get("pageType")))
           chips=find(h,"chipCloudChipRenderer"); print("CHIPS",[text(c.get("text")) for c in chips][:12], "params?", bool(chips and chips[0].get("navigationEndpoint",{}).get("browseEndpoint",{}).get("params")))
           cont=find(h,"nextContinuationData"); print("CONT",bool(cont))
-          if cont:
-              t=cont[0]["continuation"]
-              n=post("browse",{"continuation":t},"&ctoken=%s&continuation=%s&type=next"%(t,t))
-              print("CONT shelves",len(find(n,"musicCarouselShelfRenderer")), [text(s.get("header",{}).get("musicCarouselShelfBasicHeaderRenderer",{}).get("title")) for s in find(n,"musicCarouselShelfRenderer")][:6])
+          vd=h.get("responseContext",{}).get("visitorData"); print("VISITOR",bool(vd))
+          t=cont[0]["continuation"]
+          def shelves(n): return [text(x.get("header",{}).get("musicCarouselShelfBasicHeaderRenderer",{}).get("title")) for x in find(n,"musicCarouselShelfRenderer")]
+          for name,extra,q,ctxv in [("A query-only",{},"&ctoken=%s&continuation=%s&type=next"%(t,t),False),("B body-only",{"continuation":t},"",False),("C query+visitor",{},"&ctoken=%s&continuation=%s&type=next"%(t,t),True),("D body+visitor",{"continuation":t},"",True)]:
+              try:
+                  if ctxv: CTX["client"]["visitorData"]=vd
+                  else: CTX["client"].pop("visitorData",None)
+                  n=post("browse",extra,q)
+                  print("VARIANT",name,"shelves",len(shelves(n)),shelves(n)[:5],"keys",list(n.keys()))
+              except Exception as e: print("VARIANT",name,"ERR",e)
+          CTX["client"].pop("visitorData",None)
+          s0=post("search",{"query":"arijit singh","params":"EgWKAQIIAWoMEA4QChADEAQQCRAF"})
+          for r in find(s0,"musicResponsiveListItemRenderer")[:3]:
+              print("SROW",[text(f["musicResponsiveListItemFlexColumnRenderer"]["text"]) for f in r.get("flexColumns",[])],r.get("playlistItemData",{}).get("videoId"), "thumb", bool(find(r,"thumbnail")))
           # a playlist from home
           pl=None
           for s in sh:
