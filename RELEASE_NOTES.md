@@ -1,4 +1,8 @@
-## Olive 1.5.6 · Earbuds battery + new download page
+## Olive 1.5.7 · Now Playing fits every screen
+
+- The buttons at the bottom of Now Playing (Sleep, Speed, Share, Playlist) and the Lyrics button were cut off after the earbuds battery row was added. The cover now shrinks to the space that's left, so everything below it always fits.
+
+## Olive 1.5.6 (previous) · Earbuds battery + new download page
 
 ### 🎧 Earbuds battery
 - **Now Playing**: the row under the controls shows your earbuds' name and battery: **L / R / Case**, each as a small battery icon with %. It turns amber at 40%, red at 20%, and green with ⚡ while charging.
