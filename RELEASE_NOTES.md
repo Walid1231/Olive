@@ -1,4 +1,18 @@
-## Olive 1.5.5 · Online songs & audiobooks play + fixes
+## Olive 1.5.6 · Earbuds battery + new download page
+
+### 🎧 Earbuds battery
+- **Now Playing**: the row under the controls shows your earbuds' name and battery: **L / R / Case**, each as a small battery icon with %. It turns amber at 40%, red at 20%, and green with ⚡ while charging.
+- **Widget**: a small pill above the time shows "L 80% · R 75% · Case 40%" (or "Battery 70%").
+- The first time, tap **Show earbuds battery** and allow "Nearby devices". This is only used to read the battery, never your location.
+- Separate Left/Right/Case: AirPods, Beats and Google Fast Pair earbuds (Pixel Buds, many Sony, JBL, OnePlus, Nothing…). Other earbuds share a single level, so Olive shows that one level, the same number as your phone's Bluetooth settings.
+- To save your phone's battery, it only checks in short bursts while Olive is open or playing.
+
+### ⬇️ Download format page, redesigned
+- A big cover photo with the length on it (and a "Looks like an audiobook" tag for long uploads), plus the title and channel.
+- **Audio | Video** sliding switch, **Save to** Song / Audiobook cards, a big **Recommended** card with a Download button, and the other formats in a tidy 2-column grid with size and what each is good for.
+- "All original formats" folds away at the bottom. The same look is used in Search's download sheet. Long durations show hours (e.g. 5:12:40).
+
+## Olive 1.5.5 (previous) · Online songs & audiobooks play + fixes
 
 ### "Couldn't play" fixed
 - YouTube's audio links only work when the request says it comes from the same YouTube app that asked for the link. Olive's player was sending a generic identity, so every stream was refused. It now sends the right one, the way Echo does.
