@@ -72,7 +72,8 @@ class PlayerViewModel @Inject constructor(
                 durationMs = song.duration
             )
             
-            _lyrics.value = result.getOrNull()
+            // Empty Lyrics = "nothing found" (null means still loading → spinner)
+            _lyrics.value = result.getOrNull() ?: Lyrics()
             _isLyricsLoading.value = false
         }
     }

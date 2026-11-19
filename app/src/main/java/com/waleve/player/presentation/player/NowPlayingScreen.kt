@@ -1,6 +1,10 @@
 package com.waleve.player.presentation.player
 
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import com.waleve.player.presentation.components.springClick
 import com.waleve.player.presentation.components.GlassGradient
 import com.waleve.player.presentation.components.GlassGradientH
@@ -263,6 +267,10 @@ fun NowPlayingScreen(
                 LyricsView(
                     lyrics = lyrics,
                     currentPosition = playerState.currentPosition,
+                    isPlaying = playerState.isPlaying,
+                    durationMs = playerState.duration,
+                    speed = playerState.playbackSpeed,
+                    onSeek = onSeek,
                     accentColor = accentColor,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
@@ -832,6 +840,10 @@ private fun detectAudioOutput(context: Context): AudioOutputInfo {
 private fun LyricsView(
     lyrics: com.waleve.player.domain.model.Lyrics?,
     currentPosition: Long,
+    isPlaying: Boolean,
+    durationMs: Long,
+    speed: Float,
+    onSeek: (Long) -> Unit,
     accentColor: Color,
     modifier: Modifier = Modifier,
 ) {
@@ -842,84 +854,154 @@ private fun LyricsView(
         return
     }
 
+    // Smooth clock: the player reports every ~0.5 s, we fill the frames in between
+    var pos by remember { androidx.compose.runtime.mutableLongStateOf(currentPosition) }
+    LaunchedEffect(currentPosition, isPlaying, speed) {
+        pos = currentPosition
+        if (!isPlaying) return@LaunchedEffect
+        val start = androidx.compose.runtime.withFrameMillis { it }
+        while (true) {
+            androidx.compose.runtime.withFrameMillis { t -> pos = currentPosition + ((t - start) * speed).toLong() }
+        }
+    }
+
     if (lyrics.syncedLyrics.isEmpty()) {
         val plainText = lyrics.plainLyrics
         if (plainText.isNullOrBlank()) {
             Box(modifier = modifier, contentAlignment = Alignment.Center) {
-                Text(
-                    "No lyrics found for this song",
-                    color = NpInk.copy(alpha = 0.5f),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.AutoMirrored.Filled.Notes, null, tint = NpInk.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text("No lyrics found for this song", color = NpInk.copy(alpha = 0.55f), style = MaterialTheme.typography.bodyLarge)
+                }
             }
-        } else {
-            val scrollState = rememberScrollState()
-            Column(
-                modifier = modifier
-                    .padding(16.dp)
-                    .verticalScroll(scrollState),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = plainText,
-                    color = NpInk.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.bodyLarge,
-                    lineHeight = 28.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            return
+        }
+        // Not time-synced: scroll along with the song so the right part is roughly in view
+        val scroll = rememberScrollState()
+        val dragged by scroll.interactionSource.collectIsDraggedAsState()
+        var userAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+        LaunchedEffect(dragged) { if (dragged) userAt = System.currentTimeMillis() }
+        val second = pos / 1000
+        LaunchedEffect(second, durationMs) {
+            if (durationMs <= 0 || dragged || System.currentTimeMillis() - userAt < 4000) return@LaunchedEffect
+            val f = ((pos - durationMs * 0.06f) / (durationMs * 0.88f)).coerceIn(0f, 1f)
+            scroll.animateScrollTo((scroll.maxValue * f).toInt(), tween(950, easing = androidx.compose.animation.core.LinearEasing))
+        }
+        Column(modifier = modifier.verticalScroll(scroll).padding(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "Not time-synced · scrolls along with the song",
+                color = accentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(accentColor.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(plainText, color = NpInk.copy(alpha = 0.85f), fontSize = 18.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(120.dp))
         }
         return
     }
 
+    val lines = lyrics.syncedLyrics
+    // Light up a line just as it starts being sung
+    val activeIndex by remember(lines) { androidx.compose.runtime.derivedStateOf { lines.indexOfLast { it.timestampMs <= pos + 180 } } }
     val listState = rememberLazyListState()
-    var activeIndex by remember { mutableStateOf(-1) }
+    val dragged by listState.interactionSource.collectIsDraggedAsState()
+    var userAt by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    LaunchedEffect(dragged) { if (dragged) userAt = System.currentTimeMillis() }
 
-    LaunchedEffect(currentPosition, lyrics.syncedLyrics) {
-        val newIndex = lyrics.syncedLyrics.indexOfLast { it.timestampMs <= currentPosition }
-        if (newIndex != activeIndex) {
-            activeIndex = newIndex
-            if (newIndex >= 0) {
-                listState.animateScrollToItem(index = maxOf(0, newIndex - 3))
+    // Keep the sung line in the upper-middle of the view
+    LaunchedEffect(activeIndex, dragged) {
+        if (activeIndex < 0 || dragged) return@LaunchedEffect
+        val wait = 3500 - (System.currentTimeMillis() - userAt)
+        if (wait > 0) kotlinx.coroutines.delay(wait)
+        listState.animateScrollToItem(activeIndex)
+    }
+
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        val topPad = maxHeight * 0.36f
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = topPad, bottom = maxHeight * 0.55f),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            itemsIndexed(lines) { index, line ->
+                val isActive = index == activeIndex
+                val isPast = index < activeIndex
+                val scale by animateFloatAsState(if (isActive) 1.1f else 1f, tween(350), label = "lyricScale")
+                val dim by animateColorAsState(
+                    when {
+                        isActive -> NpInk.copy(alpha = 0.45f)
+                        isPast -> NpInk.copy(alpha = 0.55f)
+                        else -> NpInk.copy(alpha = 0.32f)
+                    },
+                    tween(350), label = "lyricDim",
+                )
+                val end = lines.getOrNull(index + 1)?.timestampMs ?: (line.timestampMs + 4000)
+                KaraokeLine(
+                    text = line.text,
+                    progress = {
+                        when {
+                            index < activeIndex -> 0f
+                            index > activeIndex -> 0f
+                            else -> ((pos - line.timestampMs).toFloat() / (end - line.timestampMs).coerceAtLeast(1)).coerceIn(0f, 1f)
+                        }
+                    },
+                    base = dim,
+                    fill = accentColor,
+                    bold = isActive,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { scaleX = scale; scaleY = scale }
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSeek(line.timestampMs) }
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                )
+            }
+            item {
+                Text("Tap a line to jump there · Lyrics by LRCLIB", color = NpInk.copy(alpha = 0.35f), fontSize = 11.sp, modifier = Modifier.padding(top = 16.dp))
             }
         }
     }
+}
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.padding(vertical = 8.dp),
-        contentPadding = PaddingValues(vertical = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        itemsIndexed(lyrics.syncedLyrics) { index, line ->
-            val isActive = index == activeIndex
-            val isPast = index < activeIndex
-            val textColor by animateColorAsState(
-                targetValue = when {
-                    isActive -> accentColor
-                    isPast   -> NpInk.copy(alpha = 0.7f)
-                    else     -> NpInk.copy(alpha = 0.35f)
-                },
-                animationSpec = tween(400),
-                label = "lyric_$index",
-            )
-            val fontSize by animateFloatAsState(
-                targetValue = if (isActive) 21f else 17f,
-                animationSpec = tween(400),
-                label = "lyric_size_$index",
-            )
-            Text(
-                text = line.text,
-                color = textColor,
-                fontSize = fontSize.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-            )
-        }
+/** A lyric line whose colour sweeps across (row by row) as it's being sung. */
+@Composable
+private fun KaraokeLine(
+    text: String,
+    progress: () -> Float,
+    base: Color,
+    fill: Color,
+    bold: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var layout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    val weight = if (bold) FontWeight.ExtraBold else FontWeight.Bold
+    Box(modifier) {
+        Text(text, color = base, fontSize = 20.sp, lineHeight = 27.sp, fontWeight = weight, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Text(
+            text, color = fill, fontSize = 20.sp, lineHeight = 27.sp, fontWeight = weight, textAlign = TextAlign.Center,
+            onTextLayout = { layout = it },
+            modifier = Modifier.fillMaxWidth().drawWithContent {
+                val l = layout ?: return@drawWithContent
+                val p = progress()
+                if (p <= 0f) return@drawWithContent
+                if (p >= 1f) { drawContent(); return@drawWithContent }
+                var total = 0f
+                for (i in 0 until l.lineCount) total += l.getLineRight(i) - l.getLineLeft(i)
+                var remain = total * p
+                for (i in 0 until l.lineCount) {
+                    if (remain <= 0f) break
+                    val left = l.getLineLeft(i)
+                    val take = minOf(l.getLineRight(i) - left, remain)
+                    clipRect(left = left, top = l.getLineTop(i), right = left + take, bottom = l.getLineBottom(i)) {
+                        this@drawWithContent.drawContent()
+                    }
+                    remain -= take
+                }
+            },
+        )
     }
 }
 
