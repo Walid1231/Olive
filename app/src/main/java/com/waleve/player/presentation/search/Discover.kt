@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -162,7 +163,7 @@ fun DiscoverContent(
 private fun AudiobookBanner(onClick: () -> Unit) {
     val purple = listOf(Color(0xFF8E7CFF), Color(0xFF5B4FD6), Color(0xFF2E8FA8))
     Box(
-        Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(116.dp)
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth().heightIn(min = 112.dp)
             .springClick(onClick = onClick)
             .shadow(14.dp, RoundedCornerShape(26.dp), ambientColor = Color(0xFF5B4FD6), spotColor = Color(0xFF5B4FD6))
             .clip(RoundedCornerShape(26.dp))
@@ -173,12 +174,13 @@ private fun AudiobookBanner(onClick: () -> Unit) {
             .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White.copy(alpha = 0.28f), Color.Transparent))))
         Box(Modifier.align(Alignment.BottomStart).offset(x = (-20).dp, y = 40.dp).size(120.dp).clip(CircleShape)
             .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0xFF46C190).copy(alpha = 0.35f), Color.Transparent))))
-        Row(Modifier.fillMaxSize().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("AUDIOBOOKS", color = Color.White.copy(alpha = 0.8f), fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+                Text("AUDIOBOOKS", color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.4.sp)
                 Spacer(Modifier.height(2.dp))
-                Text("Stories for every mood", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                Text("Novels, thrillers, Sunday Suspense, bhuter golpo…", color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Stories for every mood", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, lineHeight = 22.sp, maxLines = 2)
+                Spacer(Modifier.height(2.dp))
+                Text("Novels, thrillers, Sunday Suspense, bhuter golpo…", color = Color.White.copy(alpha = 0.9f), fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(10.dp))
             Box(
@@ -204,7 +206,21 @@ private fun QuickSearches(onSearch: (String) -> Unit) {
 @Composable
 private fun ShelfHeader(section: YtSection) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        section.strapline?.let { Text(it.uppercase(), color = GlassMuted, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp) }
+        section.strapline?.let { strap ->
+            val book = strap.equals("AUDIOBOOKS", ignoreCase = true)
+            Row(
+                Modifier.padding(bottom = 4.dp).clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (book) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFA08CFF), Color(0xFF6A5ACD)))
+                        else androidx.compose.ui.graphics.SolidColor(com.waleve.player.presentation.theme.GlassFill.copy(alpha = 0.75f))
+                    )
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (book) { Icon(Icons.Rounded.Headphones, null, tint = Color.White, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(4.dp)) }
+                Text(strap.uppercase(), color = if (book) Color.White else GlassSub, fontWeight = FontWeight.ExtraBold, fontSize = 10.5.sp, letterSpacing = 1.sp, maxLines = 1)
+            }
+        }
         Text(section.title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -338,7 +354,7 @@ private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, state: Int = 0, 
             textAlign = if (artist) androidx.compose.ui.text.style.TextAlign.Center else null,
         )
         if (item.subtitle.isNotBlank()) Text(
-            item.subtitle, color = GlassSub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            item.subtitle, color = GlassSub, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = if (artist) Modifier.fillMaxWidth() else Modifier,
             textAlign = if (artist) androidx.compose.ui.text.style.TextAlign.Center else null,
         )

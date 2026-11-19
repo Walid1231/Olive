@@ -1,4 +1,11 @@
-## Olive 1.5.4 · Online songs play again + tidier screens
+## Olive 1.5.5 · Fixes from your screenshots
+
+- **Continue listening follows the player.** While that book is playing it says "Now listening", with a **Pause** button and live progress. **Resume** carries on from where you are instead of restarting.
+- If the app ever loses its link to the music service, it reconnects by itself, so play/pause always shows the truth.
+- The **"Stories for every mood"** banner no longer cuts off its title.
+- **Easier to read on the blurred cover**: a stronger milky layer behind the text, darker secondary text, and shelf labels like **🎧 AUDIOBOOKS** in a solid pill.
+
+### From 1.5.4 — · Online songs play again + tidier screens
 
 ### Online songs play & download again
 - Since late 2025 YouTube makes downloaders solve a small JavaScript puzzle. Olive already contained a JavaScript engine (QuickJS), but yt-dlp wasn't using it. Now it does.

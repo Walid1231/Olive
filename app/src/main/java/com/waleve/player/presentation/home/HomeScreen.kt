@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Bedtime
@@ -200,23 +201,38 @@ fun HomeScreen(
             }
         }
         // ── Continue listening ──
-        continueListening.firstOrNull()?.let { ch ->
+        continueListening.firstOrNull()?.let { last ->
             item {
+                // Follows the player: if this book is loaded, the card shows its live state
+                val pvm: com.waleve.player.presentation.player.PlayerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                val ps by pvm.playerState.collectAsStateWithLifecycle()
+                val now = ps.currentSong?.takeIf { it.isAudiobook && it.album == last.album && it.artist == last.artist }
+                val ch = now ?: last
                 val book = allAudiobooks.filter { it.album == ch.album && it.artist == ch.artist }
                 val idx = book.indexOfFirst { it.id == ch.id }.coerceAtLeast(0)
-                val frac = if (book.isEmpty()) 0f else (book.count { it.playCount > 0 }.toFloat() / book.size)
+                val frac = when {
+                    now != null && ps.duration > 0 && book.isNotEmpty() -> ((idx + ps.currentPosition.toFloat() / ps.duration) / book.size)
+                    book.isEmpty() -> 0f
+                    else -> book.count { it.playCount > 0 }.toFloat() / book.size
+                }
+                val playingHere = now != null && ps.isPlaying
                 Row(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.7f).padding(14.dp),
+                    Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.72f).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Artwork(ch.albumArtUri, Modifier.size(104.dp), corner = 18.dp, seed = ch.album.hashCode())
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Overline("Continue listening")
+                        Overline(if (playingHere) "Now listening" else "Continue listening")
                         Text(ch.album.ifBlank { ch.title }, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Audiobook  ·  Chapter ${idx + 1} of ${book.size.coerceAtLeast(1)}", color = GlassSub, fontSize = 12.5.sp, maxLines = 1)
-                        GlassProgress(frac)
-                        GradientButton("Resume", { onSongClick(book.ifEmpty { listOf(ch) }, if (book.isEmpty()) 0 else idx) }, icon = Icons.Rounded.PlayArrow, height = 34.dp)
+                        Text("Chapter ${idx + 1} of ${book.size.coerceAtLeast(1)}", color = GlassSub, fontSize = 12.5.sp, maxLines = 1)
+                        GlassProgress(frac.coerceIn(0f, 1f))
+                        when {
+                            ps.isLoading && now != null -> GradientButton("Loading…", {}, height = 34.dp, loading = true)
+                            playingHere -> GradientButton("Pause", { pvm.playbackController.pause() }, icon = Icons.Rounded.Pause, height = 34.dp)
+                            now != null -> GradientButton("Resume", { pvm.playbackController.play() }, icon = Icons.Rounded.PlayArrow, height = 34.dp)
+                            else -> GradientButton("Resume", { onSongClick(book.ifEmpty { listOf(ch) }, if (book.isEmpty()) 0 else idx) }, icon = Icons.Rounded.PlayArrow, height = 34.dp)
+                        }
                     }
                 }
             }

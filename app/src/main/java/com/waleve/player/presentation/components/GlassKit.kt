@@ -137,7 +137,7 @@ fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, cont
                         filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { scaleX = 1.35f; scaleY = 1.35f; alpha = if (dark) 0.85f else 0.95f }
+                            .graphicsLayer { scaleX = 1.35f; scaleY = 1.35f; alpha = if (dark) 0.85f else 0.9f }
                             .then(
                                 if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
                                 else Modifier
@@ -148,7 +148,7 @@ fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, cont
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
                                 if (dark) listOf(Color(0xFF0C0F18).copy(alpha = 0.62f), Color(0xFF0C0F18).copy(alpha = 0.42f), Color(0xFF0C0F18).copy(alpha = 0.52f), Color(0xFF0C0F18).copy(alpha = 0.72f))
-                                else listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.62f))
+                                else listOf(Color.White.copy(alpha = 0.64f), Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.56f), Color.White.copy(alpha = 0.70f))
                             )
                         )
                     )

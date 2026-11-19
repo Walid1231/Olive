@@ -235,6 +235,12 @@ class PlaybackController @Inject constructor(
         positionUpdateStarted = true
         scope.launch {
             while (isActive) {
+                // Lost the link to the playback service (e.g. it was restarted)? Reconnect,
+                // otherwise the buttons would show a stale "paused" state.
+                if (mediaController?.isConnected == false) {
+                    mediaController = null
+                    connectToService()
+                }
                 updateState()
                 if (mediaController?.isPlaying == true) saveBookmark()
                 delay(500)

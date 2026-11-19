@@ -72,8 +72,8 @@ object GlassMode {
 private inline fun pick(light: Long, dark: Long) = Color(if (GlassMode.dark) dark else light)
 
 val GlassInk: Color         get() = pick(0xFF1C2333, 0xFFEEF1F8)
-val GlassSub: Color         get() = pick(0xFF5B6478, 0xFFB0B8CB)
-val GlassMuted: Color       get() = pick(0xFF8A93A6, 0xFF7F889D)
+val GlassSub: Color         get() = pick(0xFF4C5468, 0xFFB8C0D2)
+val GlassMuted: Color       get() = pick(0xFF6F788C, 0xFF8E97AC)
 val GlassAccent: Color      get() = pick(0xFF2E9C73, 0xFF4CC795)
 val GlassAccentLight: Color get() = pick(0xFF46C190, 0xFF5ED3A3)
 val GlassAccentDeep: Color  get() = pick(0xFF2E8FA8, 0xFF3FA6C2)
