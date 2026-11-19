@@ -1,4 +1,12 @@
-## Olive 1.5.7 · Now Playing fits every screen
+## Olive 1.5.7 · Lyrics that move with the song + Now Playing fits every screen
+
+### 🎤 Lyrics
+- Synced lyrics now flow with the music: the line being sung stays near the middle, gets a little bigger, and its colour fills in word by word like karaoke.
+- Tap any line to jump to that part of the song. If you scroll by hand, auto-scroll pauses for a few seconds, then catches up.
+- Finds lyrics far more often for YouTube songs: titles like "Maahi Full Music | Kangana Rana" are cleaned up, and Olive picks time-synced lyrics whose length matches the song.
+- Lyrics without timings scroll along with the song. If nothing is found, it says so instead of spinning forever.
+
+### 📱 Now Playing
 
 - The buttons at the bottom of Now Playing (Sleep, Speed, Share, Playlist) and the Lyrics button were cut off after the earbuds battery row was added. The cover now shrinks to the space that's left, so everything below it always fits.
 
