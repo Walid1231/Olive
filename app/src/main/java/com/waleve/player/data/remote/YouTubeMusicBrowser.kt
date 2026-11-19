@@ -239,7 +239,8 @@ class YouTubeMusicBrowser @Inject constructor(
             return@coroutineScope YtHome(sections = audiobookSections(AUDIOBOOK_SHELVES_ALL), fetchedAt = System.currentTimeMillis())
         }
         // Audiobook shelves load alongside the music ones and go on top
-        val books = if (params == null) async { runCatching { audiobookSections(AUDIOBOOK_SHELVES_HOME) }.getOrDefault(emptyList()) } else null
+        val books: kotlinx.coroutines.Deferred<List<YtSection>>? =
+            if (params == null) async { runCatching { audiobookSections(AUDIOBOOK_SHELVES_HOME) }.getOrDefault(emptyList<YtSection>()) } else null
         val first = post("browse", bodyWith(mapOf("browseId" to "FEmusic_home", "params" to params)))
         val sections = mutableListOf<YtSection>()
         parseShelves(first, sections)
