@@ -36,6 +36,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser
 
+    @Inject
+    lateinit var mediaExtractorWarm: com.waleve.player.data.extractor.MediaExtractor
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -49,6 +52,8 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
         together.start()
         shareAutoSaver.start()
+        // Start yt-dlp (+ its daily update) now, so the first song doesn't wait for it
+        lifecycleScope.launch { mediaExtractorWarm.warmUp() }
         // Warm up Search → Discover so its shelves are already there when you open it
         lifecycleScope.launch {
             val cached = ytMusic.cachedHome()

@@ -323,6 +323,49 @@ class YouTubeMusicBrowser @Inject constructor(
         return YtCollection(title, subtitle, thumb, songs)
     }
 
+    // ─── Direct audio link (fast path for playback) ─────────────────────────
+
+    private val vrUa = "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+
+    /**
+     * Asks YouTube's player for the audio stream the way its Android VR app does: no JavaScript
+     * puzzle, usually well under a second. Null if YouTube says no (then yt-dlp takes over).
+     */
+    suspend fun audioUrl(videoId: String): Pair<String, Long>? = withContext(Dispatchers.IO) {
+        val body = buildJsonObject {
+            putJsonObject("context") {
+                putJsonObject("client") {
+                    put("clientName", "ANDROID_VR"); put("clientVersion", "1.62.27")
+                    put("deviceMake", "Oculus"); put("deviceModel", "Quest 3")
+                    put("androidSdkVersion", 32); put("osName", "Android"); put("osVersion", "12L")
+                    put("hl", "en"); put("gl", gl)
+                    visitorData?.let { put("visitorData", it) }
+                }
+            }
+            put("videoId", videoId); put("contentCheckOk", true); put("racyCheckOk", true)
+        }.toString()
+        val req = Request.Builder()
+            .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .header("User-Agent", vrUa)
+            .header("X-YouTube-Client-Name", "28")
+            .header("X-YouTube-Client-Version", "1.62.27")
+            .build()
+        val root = runCatching {
+            client.newBuilder().callTimeout(6, TimeUnit.SECONDS).build().newCall(req).execute().use { r ->
+                if (!r.isSuccessful) null else json.parseToJsonElement(r.body!!.string())
+            }
+        }.getOrNull() ?: return@withContext null
+        if (root["playabilityStatus"]["status"].str != "OK") return@withContext null
+        val best = root["streamingData"]["adaptiveFormats"].arr
+            .filter { it["mimeType"].str.orEmpty().startsWith("audio/") && it["url"].str != null }
+            .maxByOrNull { (it["bitrate"].str?.toLongOrNull()) ?: 0L } ?: return@withContext null
+        val url = best["url"].str ?: return@withContext null
+        val expire = Regex("[?&]expire=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.times(1000)
+            ?: (System.currentTimeMillis() + 5 * 3_600_000L)
+        url to expire
+    }
+
     // ─── Search ──────────────────────────────────────────────────────────────
 
     suspend fun suggestions(query: String): List<String> {

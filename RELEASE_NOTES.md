@@ -5,6 +5,13 @@
 - Olive first tries YouTube's Android VR route, which needs no puzzle and starts faster. It falls back automatically if that fails.
 - If a song can't be streamed, a message says so and the next song plays, instead of nothing happening.
 
+### Songs start faster, and you can see them loading
+- Tapping a song now asks YouTube's own player for the audio link directly, usually in under a second (yt-dlp is the backup, and takes over automatically if the quick link fails).
+- Links are remembered for a few hours, so replaying is instant.
+- yt-dlp no longer updates itself before your first song. It updates once a day, in the background.
+- **Loading feedback**: the mini player shows the song you tapped right away, with a spinning ring and "Loading…". The tapped card or row shows a spinner, then bouncing bars while it plays.
+- Tapping a search result queues the other results after it.
+
 ### Looks
 - **No more big empty space at the top**: every screen sits higher. The status-bar gap was being added twice.
 - **Search**: compact header, a purple **Audiobooks banner** at the top of Discover, an Audiobooks chip with a book icon, and an "🎧 Audiobook" badge on book covers.

@@ -53,9 +53,21 @@ class StreamRepositoryImpl @Inject constructor(
      * Returns the best audio stream URL for the given video ID.
      * Uses yt-dlp via [MediaExtractor] for reliable extraction.
      */
+    /** videoId → (url, expires at). Links stay valid for a few hours. */
+    private val urlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
     override suspend fun getStreamUrl(videoId: String): String? {
+        // 1. Already looked up recently
+        urlCache[videoId]?.let { (u, exp) -> if (exp - System.currentTimeMillis() > 10 * 60_000) return u }
+        // 2. YouTube's own player (fast)
+        runCatching { ytMusic.audioUrl(videoId) }.getOrNull()?.let { urlCache[videoId] = it; return it.first }
+        // 3. yt-dlp (slower, but handles everything)
+        return getStreamUrlSlow(videoId)
+    }
+
+    override suspend fun getStreamUrlSlow(videoId: String): String? {
         return try {
-            mediaExtractor.extractStreamUrl(videoId)
+            mediaExtractor.extractStreamUrl(videoId)?.also { urlCache[videoId] = it to (System.currentTimeMillis() + 5 * 3_600_000L) }
         } catch (e: Exception) {
             android.util.Log.e("StreamRepository", "getStreamUrl failed for $videoId", e)
             null
@@ -67,6 +79,8 @@ class StreamRepositoryImpl @Inject constructor(
      * Delegates to [MediaExtractor.extractAudioQualities] (yt-dlp -J) which returns
      * real stream URLs — far more reliable than the InnerTube player API.
      */
+    override fun forget(videoId: String) { urlCache.remove(videoId) }
+
     override suspend fun getAvailableQualities(videoId: String): List<AudioQuality> {
         return try {
             mediaExtractor.extractAudioQualities(videoId)

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -103,6 +104,8 @@ fun DiscoverContent(
     onOpen: (YtItem) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (YtItem) -> Unit = {},
+    loadingId: String? = null,
+    playingId: String? = null,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -147,7 +150,7 @@ fun DiscoverContent(
                 val bookChip = chips.firstOrNull { it.params == YouTubeMusicBrowser.AUDIOBOOKS }
                 if (selectedChip == null && bookChip != null) item(key = "bookBanner") { AudiobookBanner { onChip(bookChip) } }
                 home?.sections.orEmpty().forEach { section ->
-                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload) }
+                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload, loadingId, playingId) }
                 }
             }
         }
@@ -207,7 +210,10 @@ private fun ShelfHeader(section: YtSection) {
 }
 
 @Composable
-private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit, onDownload: (YtItem) -> Unit) {
+private fun Shelf(
+    section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit, onDownload: (YtItem) -> Unit,
+    loadingId: String?, playingId: String?,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ShelfHeader(section)
         if (section.isSongList) {
@@ -220,13 +226,13 @@ private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpe
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId}_$i" }) { i, item ->
-                    SongRow(item, Modifier.width(300.dp)) { onPlay(section.items, i) }
+                    SongRow(item, Modifier.width(300.dp), state = stateOf(item, loadingId, playingId)) { onPlay(section.items, i) }
                 }
             }
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId ?: it.browseId}_$i" }) { i, item ->
-                    CardItem(item, onDownload = { onDownload(item) }) {
+                    CardItem(item, onDownload = { onDownload(item) }, state = stateOf(item, loadingId, playingId)) {
                         if (item.playable) onPlay(section.items.filter { it.playable }, section.items.filter { it.playable }.indexOf(item))
                         else onOpen(item)
                     }
@@ -236,13 +242,45 @@ private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpe
     }
 }
 
+/** 0 = nothing, 1 = loading, 2 = playing now. */
+fun stateOf(item: YtItem, loadingId: String?, playingId: String?): Int = when {
+    item.videoId == null -> 0
+    item.videoId == loadingId -> 1
+    item.videoId == playingId -> 2
+    else -> 0
+}
+
+/** Dim layer over a cover: a spinner while it loads, bouncing bars while it plays. */
 @Composable
-fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+private fun PlayStateOverlay(state: Int, corner: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    if (state == 0) return
+    Box(modifier.clip(RoundedCornerShape(corner)).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+        if (state == 1) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.5.dp)
+        else Bars()
+    }
+}
+
+@Composable
+private fun Bars() {
+    val t = rememberInfiniteTransition(label = "np")
+    Row(Modifier.height(16.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        listOf(380, 280, 460).forEachIndexed { i, ms ->
+            val h by t.animateFloat(0.3f, 1f, infiniteRepeatable(tween(ms, delayMillis = i * 70), RepeatMode.Reverse), label = "b$i")
+            Box(Modifier.width(3.dp).fillMaxHeight(h).clip(RoundedCornerShape(1.dp)).background(Color.White))
+        }
+    }
+}
+
+@Composable
+fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null, state: Int = 0, onClick: () -> Unit) {
     Row(modifier.springClick(onClick = onClick).height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-        Artwork(item.thumb, Modifier.size(52.dp), corner = 10.dp, seed = item.title.hashCode())
+        Box {
+            Artwork(item.thumb, Modifier.size(52.dp), corner = 10.dp, seed = item.title.hashCode())
+            PlayStateOverlay(state, 10.dp, Modifier.size(52.dp))
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.title, color = if (state == 0) GlassInk else GlassAccent, fontWeight = FontWeight.Bold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 listOfNotNull(item.subtitle.takeIf { it.isNotBlank() }, item.duration).joinToString(" • "),
                 color = GlassSub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -253,7 +291,7 @@ fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable 
 }
 
 @Composable
-private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, onClick: () -> Unit) {
+private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, state: Int = 0, onClick: () -> Unit) {
     val artist = item.type == YtType.ARTIST
     val wide = item.type == YtType.VIDEO
     val w = if (wide) 240.dp else 150.dp
@@ -265,9 +303,16 @@ private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, onClick: () -> U
                 corner = if (artist) 999.dp else 16.dp, seed = item.title.hashCode(),
             )
             if (item.playable) Box(
-                Modifier.align(Alignment.BottomEnd).padding(8.dp).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+                Modifier.align(Alignment.BottomEnd).padding(8.dp).size(34.dp).clip(CircleShape)
+                    .background(if (state != 0) GlassAccent else Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
+            ) {
+                when (state) {
+                    1 -> CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    2 -> Bars()
+                    else -> Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+            }
             if (item.audiobook) {
                 Box(
                     Modifier.align(Alignment.BottomStart).padding(8.dp).size(34.dp).clip(CircleShape)
@@ -348,6 +393,10 @@ fun YtCollectionScreen(
     val c by vm.state.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val downloads by searchVm.activeDownloads.collectAsStateWithLifecycle()
+    val playerVm: com.waleve.player.presentation.player.PlayerViewModel = hiltViewModel()
+    val ps by playerVm.playerState.collectAsStateWithLifecycle()
+    val loadingId = ps.loadingSong?.videoId ?: (if (ps.isBuffering) ps.currentSong?.videoId else null)
+    val playingId = if (ps.isPlaying && ps.loadingSong == null) ps.currentSong?.videoId else null
     var downloadFor by remember { mutableStateOf<YtItem?>(null) }
     val songs = c?.songs.orEmpty()
 
@@ -399,7 +448,7 @@ fun YtCollectionScreen(
             else -> itemsIndexed(songs, key = { i, s -> "${s.videoId}_$i" }) { i, s ->
                 val p = downloads[s.videoId]
                 SongRow(
-                    s, Modifier.fillMaxWidth(),
+                    s, Modifier.fillMaxWidth(), state = stateOf(s, loadingId, playingId),
                     trailing = {
                         if (p != null) Text("${p.progress.toInt()}%", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp))
                         else IconButton(onClick = { downloadFor = s }) { Icon(Icons.Rounded.CloudDownload, "Download", tint = GlassMuted) }

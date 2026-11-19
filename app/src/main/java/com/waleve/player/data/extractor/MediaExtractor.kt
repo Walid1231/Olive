@@ -8,6 +8,7 @@ import com.yausername.youtubedl_android.mapper.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlin.coroutines.resume
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -104,18 +105,40 @@ class MediaExtractor @Inject constructor(
      * Updates yt-dlp to the latest version so YouTube extraction works.
      * Called automatically before each extraction if not yet updated.
      */
+    private val ytdlPrefs by lazy { context.getSharedPreferences("ytdlp", Context.MODE_PRIVATE) }
+
+    /**
+     * Keep yt-dlp fresh without making anyone wait: if it was updated in the last 24 h we skip
+     * the network entirely, otherwise playback goes ahead and the update runs in the background.
+     */
     suspend fun ensureUpdated() {
         if (updated) return
+        val last = ytdlPrefs.getLong("updated_at", 0L)
+        if (System.currentTimeMillis() - last < 24 * 3_600_000L) { updated = true; return }
+        if (last > 0) {   // we have a working copy already → update in the background
+            updated = true
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { runCatching { updateNow() } }
+            return
+        }
+        updateNow()
+    }
+
+    /** Start yt-dlp + update it while the app opens, so the first song doesn't wait for it. */
+    suspend fun warmUp() = withContext(Dispatchers.IO) { runCatching { initialize(); ensureUpdated() } }
+
+    private suspend fun updateNow() {
         withContext(Dispatchers.IO) {
             try {
                 // Try updating via Nightly channel first to get fastest bypass for YouTube changes
                 YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.NIGHTLY)
                 updated = true
+                ytdlPrefs.edit().putLong("updated_at", System.currentTimeMillis()).apply()
             } catch (e: Exception) {
                 android.util.Log.e("MediaExtractor", "Failed to update yt-dlp using NIGHTLY channel, trying default...", e)
                 try {
                     YoutubeDL.getInstance().updateYoutubeDL(context)
                     updated = true
+                    ytdlPrefs.edit().putLong("updated_at", System.currentTimeMillis()).apply()
                 } catch (ex: Exception) {
                     android.util.Log.e("MediaExtractor", "Failed to update yt-dlp entirely", ex)
                     // Don't set updated = true so we can retry on next download attempt when internet might be back

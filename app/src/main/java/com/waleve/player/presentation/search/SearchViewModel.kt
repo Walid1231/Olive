@@ -340,3 +340,12 @@ fun com.waleve.player.data.remote.YtItem.toSearchResult(): com.waleve.player.dom
         videoId = videoId ?: "", title = title, artist = artist,
         album = subtitle.split(" • ").getOrNull(1), thumbnailUrl = thumb, duration = duration, durationMs = durationMs,
     )
+
+/** Search result → queue entry; the player fetches the stream itself and shows a spinner meanwhile. */
+fun com.waleve.player.domain.model.SearchResult.toQueueSong(): Song = Song(
+    id = videoId.hashCode().toLong(),
+    title = title, artist = artist, album = album ?: "",
+    albumArtUri = thumbnailUrl, duration = durationMs,
+    path = "ytm://stream/$videoId", source = "stream", videoId = videoId,
+    mediaType = if (durationMs >= 40 * 60_000L) "audiobook" else "music",
+)

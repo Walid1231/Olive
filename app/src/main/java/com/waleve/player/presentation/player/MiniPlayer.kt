@@ -69,7 +69,8 @@ fun MiniPlayer(
     sleepTimerRemaining: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
-    val song = playerState.currentSong ?: return
+    val song = playerState.shownSong ?: return
+    val loading = playerState.isLoading
     val gc = LocalGhibliColors.current
 
     val progress = if (playerState.duration > 0)
@@ -97,7 +98,9 @@ fun MiniPlayer(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = 30.dp),
                 )
-                Text(
+                if (playerState.loadingSong != null) {
+                    Text("Loading…", color = GlassAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                } else Text(
                     text = cleanMiniArtist(song.artist) + if (song.isAudiobook) "  ·  Audiobook" else "",
                     color = GlassSub, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -123,7 +126,13 @@ fun MiniPlayer(
                 modifier = Modifier.springClick(onClick = onPlayPause).size(40.dp).clip(CircleShape).background(GlassGradient),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
+                if (loading) {
+                    // spinning ring while the song is being fetched / buffering
+                    androidx.compose.material3.CircularProgressIndicator(
+                        Modifier.size(26.dp), color = Color.White, strokeWidth = 2.5.dp,
+                        trackColor = Color.White.copy(alpha = 0.25f),
+                    )
+                } else Icon(
                     imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (playerState.isPlaying) "Pause" else "Play",
                     tint = Color.White, modifier = Modifier.size(22.dp),

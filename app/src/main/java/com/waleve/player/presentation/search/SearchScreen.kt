@@ -56,6 +56,10 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
     onOpenCollection: (com.waleve.player.data.remote.YtItem) -> Unit = {},
 ) {
+    val playerVm: com.waleve.player.presentation.player.PlayerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val ps by playerVm.playerState.collectAsStateWithLifecycle()
+    val loadingId = ps.loadingSong?.videoId ?: (if (ps.isBuffering) ps.currentSong?.videoId else null)
+    val playingId = if (ps.isPlaying && ps.loadingSong == null) ps.currentSong?.videoId else null
     val home by viewModel.home.collectAsStateWithLifecycle()
     val homeLoading by viewModel.homeLoading.collectAsStateWithLifecycle()
     val homeError by viewModel.homeError.collectAsStateWithLifecycle()
@@ -230,16 +234,13 @@ fun SearchScreen(
                             items(searchResults, key = { it.videoId }) { result ->
                                 SearchResultCard(
                                     result          = result,
-                                    isStreaming     = streamingVideoId == result.videoId,
+                                    isStreaming     = loadingId == result.videoId,
                                     downloadProgress = activeDownloads[result.videoId],
                                     accent          = gc.accent,
                                     onPlayClick = {
-                                        scope.launch {
-                                            streamingVideoId = result.videoId
-                                            val song = viewModel.getStreamSong(result)
-                                            if (song != null) onSongClick(listOf(song), 0)
-                                            streamingVideoId = null
-                                        }
+                                        // Start right away: the rest of the results queue up after it
+                                        val idx = searchResults.indexOf(result).coerceAtLeast(0)
+                                        onSongClick(searchResults.map { it.toQueueSong() }, idx)
                                     },
                                     onDownloadClick = {
                                         showQualityDialogFor = result
@@ -281,6 +282,7 @@ fun SearchScreen(
                             onOpen = onOpenCollection,
                             onSearch = viewModel::searchNow,
                             onDownload = { showQualityDialogFor = it.toSearchResult() },
+                            loadingId = loadingId, playingId = playingId,
                         )
                     }
                 }

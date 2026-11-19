@@ -157,7 +157,34 @@ class PlaybackController @Inject constructor(
 
     private fun setupPlayerListener() {
         mediaController?.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val c = mediaController ?: return
+                val song = c.currentMediaItem?.mediaId?.let { songMap[it] }
+                val vid = song?.videoId
+                if (song == null || vid == null || !retried.add(vid)) {
+                    setPending(null)
+                    _messages.tryEmit("Couldn't play “${song?.title ?: "this song"}”")
+                    return
+                }
+                // The quick link didn't work — get one through yt-dlp and carry on from the same spot
+                val idx = c.currentMediaItemIndex
+                val pos = c.currentPosition
+                setPending(song)
+                scope.launch {
+                    streamRepository.forget(vid)
+                    val url = streamRepository.getStreamUrlSlow(vid)
+                    if (url == null) { setPending(null); _messages.tryEmit("Couldn't play “${song.title}”"); return@launch }
+                    val fixed = song.copy(path = url)
+                    songMap[fixed.id.toString()] = fixed
+                    mediaController?.replaceMediaItem(idx, fixed.toMediaItem())
+                    mediaController?.seekTo(idx, pos)
+                    mediaController?.prepare()
+                    mediaController?.play()
+                }
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) setPending(null)
                 val c = mediaController
                 val cur = c?.currentMediaItem?.mediaId?.let { songMap[it] }
                 if (!isPlaying) {
@@ -192,7 +219,10 @@ class PlaybackController @Inject constructor(
                 applySpeedFor(mediaItem?.mediaId?.let { songMap[it] })
                 updateState()
             }
-            override fun onPlaybackStateChanged(playbackState: Int) = updateState()
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) setPending(null)
+                updateState()
+            }
             override fun onRepeatModeChanged(repeatMode: Int) = updateState()
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = updateState()
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) = updateState()
@@ -233,9 +263,21 @@ class PlaybackController @Inject constructor(
                 },
                 shuffleEnabled = controller.shuffleModeEnabled,
                 playbackSpeed = controller.playbackParameters.speed,
+                isBuffering = controller.playbackState == Player.STATE_BUFFERING && controller.playWhenReady,
+                loadingSong = pendingSong,
             )
         }
     }
+
+    /** The song being fetched right after a tap (until it starts). */
+    @Volatile private var pendingSong: Song? = null
+    private fun setPending(song: Song?) {
+        pendingSong = song
+        _playerState.update { it.copy(loadingSong = song) }
+    }
+
+    /** Fast links that failed once → retried through yt-dlp (once per song). */
+    private val retried = mutableSetOf<String>()
 
     /** What the user did with the controls (Listen Together uses this to share or undo it). */
     sealed interface UserAction {
@@ -301,6 +343,9 @@ class PlaybackController @Inject constructor(
         currentQueue = songs
         if (songs.isEmpty()) return
         val start = startIndex.coerceIn(0, songs.lastIndex)
+        retried.clear()
+        // Show the tapped song right away with a spinner (online songs take a moment)
+        if (songs[start].path.startsWith("ytm://") || songs[start].path.startsWith("http")) setPending(songs[start])
 
         queueJob = scope.launch {
             if (songs.none { it.path.startsWith("ytm://stream/") }) {
@@ -324,9 +369,11 @@ class PlaybackController @Inject constructor(
                 }
             }
             if (first == null) {
+                setPending(null)
                 _messages.tryEmit("YouTube didn't give us these songs right now. Check your internet and try again in a minute.")
                 return@launch
             }
+            setPending(first)
             val ordered = mutableListOf(first)
             songMap[first.id.toString()] = first
             currentQueue = ordered.toList()

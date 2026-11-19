@@ -18,6 +18,12 @@ interface StreamRepository {
      */
     suspend fun getStreamUrl(videoId: String): String?
 
+    /** yt-dlp only (used when the fast link didn't play). */
+    suspend fun getStreamUrlSlow(videoId: String): String?
+
+    /** Drop a cached link that stopped working. */
+    fun forget(videoId: String)
+
     /**
      * Get available audio quality options for a video.
      * Returns a list of pairs: (qualityLabel, streamUrl).
