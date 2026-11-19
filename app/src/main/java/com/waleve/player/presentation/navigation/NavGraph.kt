@@ -156,7 +156,19 @@ fun NavGraph(
             val viewModel: SearchViewModel = hiltViewModel()
             SearchScreen(
                 viewModel = viewModel,
-                onSongClick = onSongClick
+                onSongClick = onSongClick,
+                onOpenCollection = { item ->
+                    item.browseId?.let { navController.navigate(YtCollectionRoute(it, item.title, item.thumb)) }
+                },
+            )
+        }
+
+        composable<YtCollectionRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<YtCollectionRoute>()
+            com.waleve.player.presentation.search.YtCollectionScreen(
+                browseId = route.browseId, title = route.title, thumb = route.thumb,
+                onBack = { navController.popBackStack() },
+                onSongClick = onSongClick,
             )
         }
 

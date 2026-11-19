@@ -18,6 +18,7 @@ import javax.inject.Singleton
 class StreamRepositoryImpl @Inject constructor(
     private val mediaExtractor: MediaExtractor,
     @ApplicationContext private val context: Context,
+    private val ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser,
 ) : StreamRepository {
 
     /**
@@ -25,6 +26,8 @@ class StreamRepositoryImpl @Inject constructor(
      * Much more reliable than calling InnerTube API endpoints directly.
      */
     override suspend fun searchSongs(query: String): List<SearchResult> {
+        // Fast path: YouTube Music's own search (well under a second). yt-dlp is the safety net.
+        runCatching { ytMusic.searchSongs(query) }.getOrNull()?.takeIf { it.size >= 3 }?.let { return it }
         return try {
             val ytResults = mediaExtractor.searchYouTubeMusic(query, maxResults = 20)
             ytResults.map { yt ->

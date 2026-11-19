@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -53,7 +54,14 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onSongClick: (List<Song>, Int) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenCollection: (com.waleve.player.data.remote.YtItem) -> Unit = {},
 ) {
+    val home by viewModel.home.collectAsStateWithLifecycle()
+    val homeLoading by viewModel.homeLoading.collectAsStateWithLifecycle()
+    val homeError by viewModel.homeError.collectAsStateWithLifecycle()
+    val chip by viewModel.chip.collectAsStateWithLifecycle()
+    val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.loadHome() }
     val query          by viewModel.query.collectAsStateWithLifecycle()
     val searchResults  by viewModel.searchResults.collectAsStateWithLifecycle()
     val isSearching    by viewModel.isSearching.collectAsStateWithLifecycle()
@@ -106,7 +114,7 @@ fun SearchScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Search Music",
+                        text = "Search",
                         style = MaterialTheme.typography.headlineSmall,
                         fontSize = 24.sp,
                         color = gc.textPrimary,
@@ -184,6 +192,8 @@ fun SearchScreen(
                     ),
                     textStyle = androidx.compose.ui.text.TextStyle(color = gc.textPrimary, fontSize = 15.sp),
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { if (query.isNotBlank()) viewModel.searchNow(query) }),
                 )
             }
 
@@ -238,9 +248,39 @@ fun SearchScreen(
                             }
                         }
                     }
+                    query.isNotBlank() && suggestions.isNotEmpty() -> {
+                        // Suggestions while typing
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            items(suggestions, key = { it }) { sug ->
+                                Row(
+                                    Modifier.fillMaxWidth().springClick { viewModel.searchNow(sug) }.padding(horizontal = 6.dp, vertical = 13.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Default.Search, null, tint = gc.textMuted, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(14.dp))
+                                    Text(sug, color = gc.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                                    Icon(
+                                        Icons.Default.NorthWest, "Fill in", tint = gc.textMuted,
+                                        modifier = Modifier.size(28.dp).clip(CircleShape).springClick { viewModel.updateQuery(sug) }.padding(5.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                     else -> {
-                        // Idle / empty state
-                        SearchIdleState(glowPulse = glowPulse, accentColor = gc.accent, textPrimary = gc.textPrimary, textMuted = gc.textMuted, onGenreClick = viewModel::updateQuery)
+                        // Discover: YouTube Music shelves, shown before you type
+                        DiscoverContent(
+                            home = home, loading = homeLoading, error = homeError,
+                            selectedChip = chip?.title,
+                            onChip = viewModel::selectChip,
+                            onRetry = { viewModel.loadHome(force = true) },
+                            onPlay = { items, i -> onSongClick(viewModel.songsOf(items), i.coerceAtLeast(0)) },
+                            onOpen = onOpenCollection,
+                            onSearch = viewModel::searchNow,
+                        )
                     }
                 }
             }

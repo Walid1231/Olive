@@ -20,3 +20,4 @@ import kotlinx.serialization.Serializable
 @Serializable object ProfileRoute
 @Serializable object GroupPlaylistsRoute
 @Serializable data class GroupPlaylistRoute(val id: String)
+@Serializable data class YtCollectionRoute(val browseId: String, val title: String, val thumb: String? = null)

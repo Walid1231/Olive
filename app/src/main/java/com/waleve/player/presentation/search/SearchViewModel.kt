@@ -46,7 +46,60 @@ class SearchViewModel @Inject constructor(
     private val scanMusicUseCase: ScanMusicUseCase,
     private val songDao: SongDao,
     @ApplicationContext private val context: Context,
+    private val ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser,
 ) : ViewModel() {
+
+    // ── Discover (YouTube Music home shelves, shown before typing) ──
+    private val _home = MutableStateFlow(ytMusic.cachedHome())
+    val home: StateFlow<com.waleve.player.data.remote.YtHome?> = _home.asStateFlow()
+    private val _homeLoading = MutableStateFlow(false)
+    val homeLoading: StateFlow<Boolean> = _homeLoading.asStateFlow()
+    private val _homeError = MutableStateFlow(false)
+    val homeError: StateFlow<Boolean> = _homeError.asStateFlow()
+    private val _chip = MutableStateFlow<com.waleve.player.data.remote.YtChip?>(null)
+    val chip: StateFlow<com.waleve.player.data.remote.YtChip?> = _chip.asStateFlow()
+    /** Main home (no chip), so tapping "For you" again is instant. */
+    private var mainHome: com.waleve.player.data.remote.YtHome? = _home.value
+    private var homeJob: Job? = null
+
+    /** Refresh shelves if they're missing or older than 30 minutes (or [force]). */
+    fun loadHome(force: Boolean = false) {
+        val fresh = mainHome?.let { System.currentTimeMillis() - it.fetchedAt < 30 * 60_000 } ?: false
+        if (!force && fresh && _chip.value == null) return
+        homeJob?.cancel()
+        homeJob = viewModelScope.launch {
+            _homeLoading.value = true; _homeError.value = false
+            runCatching { ytMusic.home(_chip.value?.params) }
+                .onSuccess { h ->
+                    if (_chip.value == null) mainHome = h
+                    // keep the chip row from the main page when a mood page has none
+                    _home.value = if (h.chips.isEmpty()) h.copy(chips = mainHome?.chips.orEmpty()) else h
+                }
+                .onFailure { _homeError.value = _home.value == null }
+            _homeLoading.value = false
+        }
+    }
+
+    fun selectChip(chip: com.waleve.player.data.remote.YtChip?) {
+        if (chip == _chip.value) return
+        _chip.value = chip
+        if (chip == null && mainHome != null) { _home.value = mainHome; homeJob?.cancel(); _homeLoading.value = false; return }
+        loadHome(force = true)
+    }
+
+    /** Queue for playing a shelf / playlist: YouTube ids are turned into streams by the player. */
+    fun songsOf(items: List<com.waleve.player.data.remote.YtItem>): List<Song> = items.filter { it.playable }.map { it.toSong() }
+
+    // ── Suggestions while typing ──
+    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
+    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
+
+    /** Run a search right away (suggestion / chip tap). */
+    fun searchNow(q: String) {
+        _query.value = q
+        _suggestions.value = emptyList()
+        performSearch(q)
+    }
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -74,6 +127,17 @@ class SearchViewModel @Inject constructor(
 
     init {
         observeQuery()
+        observeSuggestions()
+        loadHome()
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun observeSuggestions() {
+        viewModelScope.launch {
+            _query.debounce(200).distinctUntilChanged().collect { q ->
+                _suggestions.value = if (q.isBlank()) emptyList() else runCatching { ytMusic.suggestions(q) }.getOrDefault(emptyList())
+            }
+        }
     }
 
     @OptIn(FlowPreview::class)
@@ -93,6 +157,7 @@ class SearchViewModel @Inject constructor(
         _query.value = newQuery
         if (newQuery.length < 2) {
             _searchResults.value = emptyList()
+            if (newQuery.isEmpty()) _suggestions.value = emptyList()
         }
     }
 
@@ -255,3 +320,22 @@ class SearchViewModel @Inject constructor(
         } catch (_: Exception) { /* best-effort */ }
     }
 }
+
+/** A YouTube Music song as a queue entry (the player resolves ytm://stream/ ids). */
+fun com.waleve.player.data.remote.YtItem.toSong(): Song = Song(
+    id = (videoId ?: title).hashCode().toLong(),
+    title = title,
+    artist = artist,
+    album = subtitle.split(" • ").getOrNull(1).orEmpty(),
+    albumArtUri = thumb,
+    duration = durationMs,
+    path = "ytm://stream/$videoId",
+    source = "stream",
+    videoId = videoId,
+)
+
+fun com.waleve.player.data.remote.YtItem.toSearchResult(): com.waleve.player.domain.model.SearchResult =
+    com.waleve.player.domain.model.SearchResult(
+        videoId = videoId ?: "", title = title, artist = artist,
+        album = subtitle.split(" • ").getOrNull(1), thumbnailUrl = thumb, duration = duration, durationMs = durationMs,
+    )

@@ -1,0 +1,358 @@
+package com.waleve.player.presentation.search
+
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.waleve.player.data.remote.YouTubeMusicBrowser
+import com.waleve.player.data.remote.YtCollection
+import com.waleve.player.data.remote.YtHome
+import com.waleve.player.data.remote.YtItem
+import com.waleve.player.data.remote.YtSection
+import com.waleve.player.data.remote.YtType
+import com.waleve.player.domain.model.Song
+import com.waleve.player.presentation.components.Artwork
+import com.waleve.player.presentation.components.GlassButton
+import com.waleve.player.presentation.components.GlassChip
+import com.waleve.player.presentation.components.GlassIconButton
+import com.waleve.player.presentation.components.GradientButton
+import com.waleve.player.presentation.components.PhotoCard
+import com.waleve.player.presentation.components.glass
+import com.waleve.player.presentation.components.springClick
+import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassInk
+import com.waleve.player.presentation.theme.GlassMuted
+import com.waleve.player.presentation.theme.GlassSub
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * What Search shows before you type (like Echo / YouTube Music): mood chips and shelves of
+ * playlists, albums, artists and "Quick picks" songs. Saved copy shows instantly.
+ */
+@Composable
+fun DiscoverContent(
+    home: YtHome?,
+    loading: Boolean,
+    error: Boolean,
+    selectedChip: String?,
+    onChip: (com.waleve.player.data.remote.YtChip?) -> Unit,
+    onRetry: () -> Unit,
+    onPlay: (List<YtItem>, Int) -> Unit,
+    onOpen: (YtItem) -> Unit,
+    onSearch: (String) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        // Mood chips
+        val chips = home?.chips.orEmpty()
+        if (chips.isNotEmpty()) item {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { GlassChip("For you", selectedChip == null, { onChip(null) }) }
+                items(chips.filter { it.params != null }) { c -> GlassChip(c.title, selectedChip == c.title, { onChip(c) }) }
+            }
+        }
+        if (loading) item {
+            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = GlassAccent, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(if (home == null) "Loading music for you…" else "Refreshing…", color = GlassSub, fontSize = 12.sp)
+            }
+        }
+        when {
+            home == null && loading -> items(3) { SkeletonShelf() }
+            home == null && error -> item {
+                Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Couldn't load YouTube Music", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    Text("Check your internet, or just type to search.", color = GlassSub, fontSize = 13.sp)
+                    Spacer(Modifier.height(12.dp))
+                    GlassButton("Try again", onRetry, icon = Icons.Rounded.Refresh)
+                    Spacer(Modifier.height(18.dp))
+                    QuickSearches(onSearch)
+                }
+            }
+            else -> home?.sections.orEmpty().forEach { section ->
+                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickSearches(onSearch: (String) -> Unit) {
+    val tries = listOf("Arijit Singh", "Bangla Lofi", "Coke Studio Bangla", "Lo-fi", "Bollywood hits", "Ghazal")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        tries.take(3).forEach { GlassChip(it, false, { onSearch(it) }) }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        tries.drop(3).forEach { GlassChip(it, false, { onSearch(it) }) }
+    }
+}
+
+@Composable
+private fun ShelfHeader(section: YtSection) {
+    Column(Modifier.padding(horizontal = 20.dp)) {
+        section.strapline?.let { Text(it.uppercase(), color = GlassMuted, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp) }
+        Text(section.title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ShelfHeader(section)
+        if (section.isSongList) {
+            // Quick picks: columns of 4 song rows, swipe sideways
+            val rows = minOf(4, section.items.size)
+            LazyHorizontalGrid(
+                rows = GridCells.Fixed(rows),
+                modifier = Modifier.fillMaxWidth().height((rows * 64).dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                itemsIndexed(section.items, key = { i, it -> "${it.videoId}_$i" }) { i, item ->
+                    SongRow(item, Modifier.width(300.dp)) { onPlay(section.items, i) }
+                }
+            }
+        } else {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                itemsIndexed(section.items, key = { i, it -> "${it.videoId ?: it.browseId}_$i" }) { i, item ->
+                    CardItem(item) {
+                        if (item.playable) onPlay(section.items.filter { it.playable }, section.items.filter { it.playable }.indexOf(item))
+                        else onOpen(item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+    Row(modifier.springClick(onClick = onClick).height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+        Artwork(item.thumb, Modifier.size(52.dp), corner = 10.dp, seed = item.title.hashCode())
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(item.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(item.subtitle.takeIf { it.isNotBlank() }, item.duration).joinToString(" • "),
+                color = GlassSub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun CardItem(item: YtItem, onClick: () -> Unit) {
+    val artist = item.type == YtType.ARTIST
+    val wide = item.type == YtType.VIDEO
+    val w = if (wide) 240.dp else 150.dp
+    Column(Modifier.width(w).springClick(onClick = onClick)) {
+        Box {
+            Artwork(
+                item.thumb,
+                Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 9f else 1f).then(if (artist) Modifier.clip(CircleShape) else Modifier),
+                corner = if (artist) 999.dp else 16.dp, seed = item.title.hashCode(),
+            )
+            if (item.playable) Box(
+                Modifier.align(Alignment.BottomEnd).padding(8.dp).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            item.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = if (artist) Modifier.fillMaxWidth() else Modifier,
+            textAlign = if (artist) androidx.compose.ui.text.style.TextAlign.Center else null,
+        )
+        if (item.subtitle.isNotBlank()) Text(
+            item.subtitle, color = GlassSub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = if (artist) Modifier.fillMaxWidth() else Modifier,
+            textAlign = if (artist) androidx.compose.ui.text.style.TextAlign.Center else null,
+        )
+    }
+}
+
+@Composable
+private fun SkeletonShelf() {
+    val t = rememberInfiniteTransition(label = "sk")
+    val a by t.animateFloat(0.35f, 0.75f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "ska")
+    Column(Modifier.graphicsLayer { alpha = a }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.padding(horizontal = 20.dp).width(160.dp).height(18.dp).clip(RoundedCornerShape(6.dp)).background(GlassInk.copy(alpha = 0.08f)))
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(3) { Box(Modifier.size(150.dp).clip(RoundedCornerShape(16.dp)).background(GlassInk.copy(alpha = 0.08f))) }
+        }
+    }
+}
+
+// ─── Playlist / album / artist page ─────────────────────────────────────────
+
+@HiltViewModel
+class YtCollectionViewModel @Inject constructor(private val browser: YouTubeMusicBrowser) : ViewModel() {
+    private val _state = MutableStateFlow<YtCollection?>(null)
+    val state = _state.asStateFlow()
+    private val _error = MutableStateFlow(false)
+    val error = _error.asStateFlow()
+    private var loaded: String? = null
+
+    fun load(browseId: String, force: Boolean = false) {
+        if (loaded == browseId && !force) return
+        loaded = browseId
+        viewModelScope.launch {
+            _error.value = false
+            runCatching { browser.collection(browseId) }
+                .onSuccess { _state.value = it }
+                .onFailure { _error.value = true }
+        }
+    }
+}
+
+@Composable
+fun YtCollectionScreen(
+    browseId: String,
+    title: String,
+    thumb: String?,
+    onBack: () -> Unit,
+    onSongClick: (List<Song>, Int) -> Unit,
+    vm: YtCollectionViewModel = hiltViewModel(),
+    searchVm: SearchViewModel = hiltViewModel(),
+) {
+    LaunchedEffect(browseId) { vm.load(browseId) }
+    val c by vm.state.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val downloads by searchVm.activeDownloads.collectAsStateWithLifecycle()
+    var downloadFor by remember { mutableStateOf<YtItem?>(null) }
+    val songs = c?.songs.orEmpty()
+
+    fun play(start: Int, shuffle: Boolean = false) {
+        if (songs.isEmpty()) return
+        val q = searchVm.songsOf(songs)
+        if (shuffle) onSongClick(q.shuffled(), 0) else onSongClick(q, start)
+    }
+
+    LazyColumn(
+        Modifier.fillMaxSize().statusBarsPadding(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GlassIconButton(Icons.AutoMirrored.Rounded.ArrowBack, onBack, contentDescription = "Back")
+                Spacer(Modifier.width(10.dp))
+                Text("YouTube Music", color = GlassSub, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+        item {
+            PhotoCard(
+                model = c?.thumb ?: thumb,
+                title = c?.title?.ifBlank { null } ?: title,
+                subtitle = listOfNotNull(c?.subtitle?.takeIf { it.isNotBlank() }, if (songs.isNotEmpty()) "${songs.size} songs" else null).joinToString(" · "),
+                seed = title.hashCode(), corner = 28.dp,
+                modifier = Modifier.fillMaxWidth().aspectRatio(1.15f),
+            )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GradientButton("Play", { play(0) }, Modifier.weight(1f), icon = Icons.Rounded.PlayArrow, enabled = songs.isNotEmpty())
+                GlassButton("Shuffle", { play(0, true) }, Modifier.weight(1f), icon = Icons.Rounded.Shuffle, enabled = songs.isNotEmpty())
+            }
+        }
+        when {
+            c == null && !error -> item {
+                Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = GlassAccent) }
+            }
+            c == null && error -> item {
+                Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.6f).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Couldn't open this", color = GlassInk, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    GlassButton("Try again", { vm.load(browseId, force = true) }, icon = Icons.Rounded.Refresh)
+                }
+            }
+            songs.isEmpty() -> item { Text("No songs here.", color = GlassSub) }
+            else -> itemsIndexed(songs, key = { i, s -> "${s.videoId}_$i" }) { i, s ->
+                val p = downloads[s.videoId]
+                SongRow(
+                    s, Modifier.fillMaxWidth(),
+                    trailing = {
+                        if (p != null) Text("${p.progress.toInt()}%", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp))
+                        else IconButton(onClick = { downloadFor = s }) { Icon(Icons.Rounded.CloudDownload, "Download", tint = GlassMuted) }
+                    },
+                ) { play(i) }
+            }
+        }
+    }
+
+    downloadFor?.let { s ->
+        com.waleve.player.presentation.components.DownloadFormatSheet(
+            title = s.title,
+            durationSec = s.durationMs / 1000,
+            onDismiss = { downloadFor = null },
+            onPick = { format, asAudiobook ->
+                searchVm.downloadSong(s.toSearchResult(), format, asAudiobook)
+                downloadFor = null
+            },
+        )
+    }
+}

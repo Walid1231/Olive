@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var shareAutoSaver: com.waleve.player.data.social.ShareAutoSaver
 
+    @Inject
+    lateinit var ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -46,6 +49,11 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
         together.start()
         shareAutoSaver.start()
+        // Warm up Search → Discover so its shelves are already there when you open it
+        lifecycleScope.launch {
+            val cached = ytMusic.cachedHome()
+            if (cached == null || System.currentTimeMillis() - cached.fetchedAt > 30 * 60_000) runCatching { ytMusic.home() }
+        }
         com.waleve.player.widget.OliveWidget.watch(this, playbackController)
 
         setContent {
