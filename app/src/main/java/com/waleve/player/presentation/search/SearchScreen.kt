@@ -280,6 +280,7 @@ fun SearchScreen(
                             onPlay = { items, i -> onSongClick(viewModel.songsOf(items), i.coerceAtLeast(0)) },
                             onOpen = onOpenCollection,
                             onSearch = viewModel::searchNow,
+                            onDownload = { showQualityDialogFor = it.toSearchResult() },
                         )
                     }
                 }

@@ -5,6 +5,8 @@ import com.waleve.player.domain.model.SearchResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -40,6 +42,8 @@ data class YtItem(
     val browseId: String? = null,
     val duration: String? = null,
     val durationMs: Long = 0,
+    /** Long spoken content: played and saved as an audiobook. */
+    val audiobook: Boolean = false,
 ) {
     val playable: Boolean get() = videoId != null
     /** Artist for a song row ("Arijit Singh • Album • 4:05" → "Arijit Singh"). */
@@ -75,15 +79,15 @@ class YouTubeMusicBrowser @Inject constructor(
     private val client = okHttpClient.newBuilder().callTimeout(20, TimeUnit.SECONDS).build()
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
     private val base = "https://music.youtube.com/youtubei/v1/"
-    private val cacheFile get() = File(context.filesDir, "ytm_home.json")
+    private val cacheFile get() = File(context.filesDir, "ytm_home_v2.json")
 
-    /** Region for recommendations: the phone's country, Indian/Bangla catalogue as the fallback. */
-    private val gl: String = java.util.Locale.getDefault().country.takeIf { it.length == 2 && it != "BD" } ?: "IN"
+    /** Region for recommendations: the US catalogue = mostly English music. */
+    private val gl: String = "US"
 
     /** YouTube's visitor id: needed for "more shelves" pages; kept so recommendations stay consistent. */
     private val prefs by lazy { context.getSharedPreferences("ytm", Context.MODE_PRIVATE) }
     @Volatile private var visitorData: String? = null
-        get() = field ?: prefs.getString("visitor", null).also { field = it }
+        get() = field ?: prefs.getString("visitor_us", null).also { field = it }
 
     private fun bodyWith(extra: Map<String, String?>): String = buildJsonObject {
         putJsonObject("context") {
@@ -112,7 +116,7 @@ class YouTubeMusicBrowser @Inject constructor(
             if (!resp.isSuccessful) throw java.io.IOException("YouTube Music HTTP ${resp.code}")
             val obj = json.parseToJsonElement(resp.body!!.string()) as JsonObject
             obj["responseContext"]["visitorData"].str?.let { v ->
-                if (v != visitorData) { visitorData = v; prefs.edit().putString("visitor", v).apply() }
+                if (v != visitorData) { visitorData = v; prefs.edit().putString("visitor_us", v).apply() }
             }
             obj
         }
@@ -230,7 +234,12 @@ class YouTubeMusicBrowser @Inject constructor(
     }.getOrNull()
 
     /** Fresh home page (optionally for a mood chip). Saves it for next time. */
-    suspend fun home(params: String? = null): YtHome {
+    suspend fun home(params: String? = null): YtHome = kotlinx.coroutines.coroutineScope {
+        if (params == AUDIOBOOKS) {
+            return@coroutineScope YtHome(sections = audiobookSections(AUDIOBOOK_SHELVES_ALL), fetchedAt = System.currentTimeMillis())
+        }
+        // Audiobook shelves load alongside the music ones and go on top
+        val books = if (params == null) async { runCatching { audiobookSections(AUDIOBOOK_SHELVES_HOME) }.getOrDefault(emptyList()) } else null
         val first = post("browse", bodyWith(mapOf("browseId" to "FEmusic_home", "params" to params)))
         val sections = mutableListOf<YtSection>()
         parseShelves(first, sections)
@@ -248,9 +257,51 @@ class YouTubeMusicBrowser @Inject constructor(
             parseShelves(next, sections)
             token = findFirst(next, "nextContinuationData")?.get("continuation").str
         }
-        val home = YtHome(chips, sections.distinctBy { it.title }, System.currentTimeMillis())
-        if (params == null && sections.isNotEmpty()) runCatching { cacheFile.writeText(json.encodeToString(home)) }
-        return home
+        // English first: drop Indian-language shelves
+        val music = sections.distinctBy { it.title }.filterNot { INDIAN.containsMatchIn(it.title) || INDIAN.containsMatchIn(it.strapline.orEmpty()) }
+        val all = books?.await().orEmpty() + music
+        val home = YtHome(listOf(YtChip("📚 Audiobooks", AUDIOBOOKS)) + chips.filter { it.title != "Podcasts" }, all, System.currentTimeMillis())
+        if (params == null && all.isNotEmpty()) runCatching { cacheFile.writeText(json.encodeToString(home)) }
+        home
+    }
+
+    // ─── Audiobooks (long YouTube readings) ─────────────────────────────────
+
+    /** Long videos for [query] (≥ 20 min), as audiobook items. */
+    suspend fun searchBooks(query: String, minMs: Long = 20 * 60_000L): List<YtItem> {
+        val root = post("search", bodyWith(mapOf("query" to query, "params" to "EgWKAQIQAWoMEA4QChADEAQQCRAF")))
+        return findAll(root, "musicResponsiveListItemRenderer").mapNotNull { parseListItem(it) }
+            .filter { it.playable && it.durationMs >= minMs }
+            .distinctBy { it.videoId }
+            .map { it.copy(type = YtType.VIDEO, audiobook = true, subtitle = listOfNotNull(it.subtitle.substringBefore(" • ").takeIf { s -> s.isNotBlank() }, it.duration).joinToString(" • ")) }
+    }
+
+    private suspend fun audiobookSections(shelves: List<Pair<String, String>>): List<YtSection> = kotlinx.coroutines.coroutineScope {
+        shelves.map { (title, q) ->
+            async { runCatching { YtSection(title, "AUDIOBOOKS", searchBooks(q)) }.getOrNull() }
+        }.awaitAll().filterNotNull().filter { it.items.size >= 3 }
+    }
+
+    companion object {
+        const val AUDIOBOOKS = "__audiobooks"
+        private val INDIAN = Regex("(?i)bollywood|hindi|punjabi|tamil|telugu|desi|indian|bhojpuri|malayalam|kannada|marathi|haryanvi|ghazal|sufi|qawwali|filmi|t-series")
+        private val AUDIOBOOK_SHELVES_HOME = listOf(
+            "Audiobooks for you" to "full audiobook english",
+            "Bangla audio golpo" to "bangla audio golpo full",
+            "Sunday Suspense" to "sunday suspense full story",
+        )
+        private val AUDIOBOOK_SHELVES_ALL = listOf(
+            "Popular audiobooks" to "full audiobook english",
+            "Classic novels" to "classic novel full audiobook",
+            "Mystery & thrillers" to "mystery thriller full audiobook",
+            "Sunday Suspense" to "sunday suspense full story",
+            "Bangla audio golpo" to "bangla audio golpo full",
+            "Bhuter golpo" to "bhuter golpo audio story",
+            "Sherlock Holmes" to "sherlock holmes full audiobook",
+            "Self-help & mindset" to "self help full audiobook",
+            "Sci-fi & fantasy" to "science fiction full audiobook",
+            "Bedtime stories" to "bedtime stories for kids audiobook",
+        )
     }
 
     // ─── Playlist / album / artist ──────────────────────────────────────────

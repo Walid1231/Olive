@@ -98,6 +98,7 @@ fun DiscoverContent(
     onPlay: (List<YtItem>, Int) -> Unit,
     onOpen: (YtItem) -> Unit,
     onSearch: (String) -> Unit,
+    onDownload: (YtItem) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -132,7 +133,7 @@ fun DiscoverContent(
                 }
             }
             else -> home?.sections.orEmpty().forEach { section ->
-                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen) }
+                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload) }
             }
         }
     }
@@ -159,7 +160,7 @@ private fun ShelfHeader(section: YtSection) {
 }
 
 @Composable
-private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit) {
+private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit, onDownload: (YtItem) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ShelfHeader(section)
         if (section.isSongList) {
@@ -178,7 +179,7 @@ private fun Shelf(section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpe
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId ?: it.browseId}_$i" }) { i, item ->
-                    CardItem(item) {
+                    CardItem(item, onDownload = { onDownload(item) }) {
                         if (item.playable) onPlay(section.items.filter { it.playable }, section.items.filter { it.playable }.indexOf(item))
                         else onOpen(item)
                     }
@@ -205,7 +206,7 @@ fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable 
 }
 
 @Composable
-private fun CardItem(item: YtItem, onClick: () -> Unit) {
+private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, onClick: () -> Unit) {
     val artist = item.type == YtType.ARTIST
     val wide = item.type == YtType.VIDEO
     val w = if (wide) 240.dp else 150.dp
@@ -220,6 +221,17 @@ private fun CardItem(item: YtItem, onClick: () -> Unit) {
                 Modifier.align(Alignment.BottomEnd).padding(8.dp).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
+            if (item.audiobook) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).padding(8.dp).size(34.dp).clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)).springClick(onClick = onDownload),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Rounded.CloudDownload, "Download", tint = Color.White, modifier = Modifier.size(18.dp)) }
+                Box(
+                    Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 7.dp, vertical = 3.dp),
+                ) { Text("📚 BOOK", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold) }
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(

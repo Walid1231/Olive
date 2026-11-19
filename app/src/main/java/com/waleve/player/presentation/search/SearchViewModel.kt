@@ -332,7 +332,8 @@ fun com.waleve.player.data.remote.YtItem.toSong(): Song = Song(
     path = "ytm://stream/$videoId",
     source = "stream",
     videoId = videoId,
-)
+    mediaType = if (audiobook) "audiobook" else "music",
+).let { if (audiobook) it.copy(album = title, artist = subtitle.substringBefore(" • ")) else it }
 
 fun com.waleve.player.data.remote.YtItem.toSearchResult(): com.waleve.player.domain.model.SearchResult =
     com.waleve.player.domain.model.SearchResult(

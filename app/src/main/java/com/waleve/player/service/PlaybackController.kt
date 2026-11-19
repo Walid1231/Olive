@@ -59,12 +59,15 @@ class PlaybackController @Inject constructor(
     private val bookmarks = context.getSharedPreferences("audiobook_positions", Context.MODE_PRIVATE)
     private var lastBookmarkSave = 0L
 
+    /** Online books have a new stream URL every time, so they're remembered by YouTube id. */
+    private fun bookmarkKey(song: Song): String = song.videoId?.let { "yt:$it" } ?: song.path
+
     private fun savedPosition(song: Song?): Long {
         if (song?.isAudiobook != true) return 0L
-        val pos = bookmarks.getLong(song.path, 0L)
+        val pos = bookmarks.getLong(bookmarkKey(song), 0L)
         if (pos <= 0) return 0L
         // Smart resume: step back a little, more the longer you've been away
-        val savedAt = bookmarks.getLong("t:" + song.path, 0L)
+        val savedAt = bookmarks.getLong("t:" + bookmarkKey(song), 0L)
         val gap = if (savedAt > 0) System.currentTimeMillis() - savedAt else 0L
         return (pos - smartRewind(gap)).coerceAtLeast(0L)
     }
@@ -100,7 +103,8 @@ class PlaybackController @Inject constructor(
         val dur = c.duration
         // Finished (last 30 s) → start from the beginning next time
         val toSave = if (dur > 0 && pos > dur - 30_000) 0L else pos
-        bookmarks.edit().putLong(song.path, toSave).putLong("t:" + song.path, now).apply()
+        val key = bookmarkKey(song)
+        bookmarks.edit().putLong(key, toSave).putLong("t:$key", now).apply()
     }
 
     // ── Sleep Timer ──────────────────────────────────────────
