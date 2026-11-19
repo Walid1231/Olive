@@ -311,8 +311,8 @@ class HeadsetBatteryMonitor @Inject constructor(
     }
 
     // Scan ~15 s, rest ~1–2 min: fresh numbers without draining the phone.
-    private val cycleOn = Runnable { beginScan(); main.postDelayed(cycleOff, 15_000) }
-    private val cycleOff = Runnable {
+    private val cycleOn: Runnable = Runnable { beginScan(); main.postDelayed(cycleOff, 15_000) }
+    private val cycleOff: Runnable = Runnable {
         endScan()
         if (cycling) main.postDelayed(cycleOn, if (sides != null) 120_000 else 60_000)
     }
