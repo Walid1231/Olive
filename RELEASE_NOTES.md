@@ -12,6 +12,14 @@
 - **Loading feedback**: the mini player shows the song you tapped right away, with a spinning ring and "Loading…". The tapped card or row shows a spinner, then bouncing bars while it plays.
 - Tapping a search result queues the other results after it.
 
+### 🌙 Dark mode
+- **Library → ⚙ → Appearance**: Auto (follows your phone), Light or Dark.
+- Dark mode keeps the glassmorphism: smoky glass cards with lit edges over a deep navy background, with the playing song's blurred cover glowing behind everything.
+- Every card, sheet, menu, chat bubble, text field and the navigation dock has a dark version. Status-bar icons switch too.
+
+### New font: Outfit
+- The whole app now uses **Outfit**, including text fields and photo-card titles.
+
 ### Looks
 - **Blurred-cover glass**: the cover of the song you're playing becomes a soft, blurred backdrop behind the whole app. All the glass cards float over it, and it fades smoothly when the song changes. With nothing playing, the pastel glass background stays.
 - **No more big empty space at the top**: every screen sits higher. The status-bar gap was being added twice.

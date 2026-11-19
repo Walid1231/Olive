@@ -852,4 +852,4 @@ private fun cleanArtistName(raw: String?): String =
     if (raw.isNullOrBlank() || raw.trim() == "<unknown>") "Unknown Artist" else raw.trim()
 
 /** Text / icon colour on the light glass Now Playing screen. */
-private val NpInk = GlassInk
+private val NpInk: androidx.compose.ui.graphics.Color get() = GlassInk

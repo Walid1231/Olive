@@ -145,7 +145,7 @@ fun FriendsScreen(
         var text by remember(n.notifId) { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { replyTo = null },
-            containerColor = Color.White,
+            containerColor = com.waleve.player.presentation.theme.GlassMenu,
             title = { Text("Reply to ${n.fromName}", fontWeight = FontWeight.ExtraBold, color = GlassInk) },
             text = {
                 Column {
@@ -154,7 +154,7 @@ fun FriendsScreen(
                     androidx.compose.material3.OutlinedTextField(
                         value = text, onValueChange = { if (it.length <= 200) text = it },
                         placeholder = { Text("Loved this one!", color = GlassMuted) },
-                        textStyle = TextStyle(color = GlassInk, fontSize = 15.sp), maxLines = 4,
+                        textStyle = TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 15.sp), maxLines = 4,
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = GlassAccent, cursorColor = GlassAccent),
                     )
                 }
@@ -199,7 +199,7 @@ fun FriendsScreen(
     confirmRemove?.let { f ->
         AlertDialog(
             onDismissRequest = { confirmRemove = null },
-            containerColor = Color.White,
+            containerColor = com.waleve.player.presentation.theme.GlassMenu,
             title = { Text("Remove ${f.displayName}?", fontWeight = FontWeight.ExtraBold, color = GlassInk) },
             text = { Text("You'll stop being friends on both sides. You can send a new request any time.", color = GlassSub) },
             confirmButton = { TextButton(onClick = { viewModel.removeFriend(f); confirmRemove = null }) { Text("Remove", color = GlassDanger, fontWeight = FontWeight.Bold) } },
@@ -301,7 +301,7 @@ fun FriendsScreen(
                     if (query.isEmpty()) Text("Find people by name, email or code", color = GlassMuted, fontSize = 14.sp)
                     BasicTextField(
                         value = query, onValueChange = viewModel::updateQuery, singleLine = true,
-                        textStyle = TextStyle(color = GlassInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        textStyle = TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
                         cursorBrush = SolidColor(GlassAccent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         modifier = Modifier.fillMaxWidth(),
@@ -420,7 +420,7 @@ private fun LazyListScope.inboxTab(
                 Box {
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Rounded.MoreVert, "More", tint = GlassMuted, modifier = Modifier.size(18.dp)) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu) {
                         DropdownMenuItem(text = { Text("Delete", color = GlassDanger) }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = GlassDanger) }, onClick = { menu = false; onDelete(n) })
                     }
                 }
@@ -603,7 +603,7 @@ private fun LazyListScope.friendsTab(
             else Box {
                 var menu by remember { mutableStateOf(false) }
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = GlassMuted) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu) {
                     DropdownMenuItem(
                         text = { Text("Remove friend", color = GlassDanger) },
                         leadingIcon = { Icon(Icons.Rounded.PersonRemove, null, tint = GlassDanger) },

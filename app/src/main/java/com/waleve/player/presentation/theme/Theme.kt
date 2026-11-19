@@ -24,6 +24,21 @@ private val GlassColorScheme = lightColorScheme(
     outline = Color(0xFFD9DCE6), outlineVariant = Color(0xFFE8EAF1),
 )
 
+// ── Dark glass Material scheme ───────────────────────
+private val GlassDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF4CC795), onPrimary = Color(0xFF0B1A14),
+    primaryContainer = Color(0xFF1C3B30), onPrimaryContainer = Color(0xFFEEF1F8),
+    secondary = Color(0xFF3FA6C2), onSecondary = Color(0xFF07141A),
+    secondaryContainer = Color(0xFF1C2B3C), onSecondaryContainer = Color(0xFFEEF1F8),
+    tertiary = Color(0xFF9D8FFF), onTertiary = Color(0xFF120D2B),
+    background = Color(0xFF11141C), onBackground = Color(0xFFEEF1F8),
+    surface = Color(0xFF161A24), onSurface = Color(0xFFEEF1F8),
+    surfaceVariant = Color(0xFF232838), onSurfaceVariant = Color(0xFFB0B8CB),
+    surfaceContainer = Color(0xFF161A24), surfaceContainerHigh = Color(0xFF1E2230), surfaceContainerLow = Color(0xFF131720),
+    error = Color(0xFFFF7A96), onError = Color(0xFF2A0710),
+    outline = Color(0xFF3A4152), outlineVariant = Color(0xFF2A3040),
+)
+
 // ── Day (Light) Color Scheme ──────────────────────────
 private val GhibliDayColorScheme = lightColorScheme(
     primary             = GhibliForestMid,
@@ -114,8 +129,22 @@ fun WaLeveTheme(
     isNightMode: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val ghibliColors = GhibliColors()
-    val materialScheme = GlassColorScheme
+    // Every Glass* colour follows this switch
+    if (GlassMode.dark != isNightMode) GlassMode.dark = isNightMode
+    val ghibliColors = GhibliColors(isNight = isNightMode)
+    val materialScheme = if (isNightMode) GlassDarkColorScheme else GlassColorScheme
+
+    // Status / navigation bar icons: dark icons on light glass, light icons on dark glass
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+            androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !isNightMode
+                isAppearanceLightNavigationBars = !isNightMode
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalGhibliColors provides ghibliColors) {
         MaterialTheme(

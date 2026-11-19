@@ -99,7 +99,7 @@ fun DownloadScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val url by viewModel.url.collectAsStateWithLifecycle()
     val gc = LocalGhibliColors.current
-    val isNight = gc.isNight
+    val isNight = false   // glass in both modes: let the app background show through
 
     val isActive = uiState is DownloadUiState.Downloading || uiState is DownloadUiState.Done
 
@@ -186,7 +186,7 @@ fun DownloadScreen(
                     .clip(RoundedCornerShape(20.dp))
                     .background(
                         if (isNight) Color.White.copy(alpha = 0.05f)
-                        else Color.White.copy(alpha = 0.75f)
+                        else com.waleve.player.presentation.theme.GlassFill.copy(alpha = 0.75f)
                     )
                     .border(
                         width = 1.dp,
@@ -241,7 +241,7 @@ fun DownloadScreen(
                             focusedPlaceholderColor   = gc.textMuted,
                             unfocusedPlaceholderColor = gc.textMuted,
                         ),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = gc.textPrimary, fontSize = 14.sp),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = gc.textPrimary, fontSize = 14.sp),
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                     )
@@ -779,7 +779,7 @@ private fun DoneContent(
     onReset: () -> Unit,
 ) {
     val gc = LocalGhibliColors.current
-    val isNight = gc.isNight
+    val isNight = false   // glass in both modes: let the app background show through
 
     val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "successPulse")
     val glowScale by infiniteTransition.animateFloat(

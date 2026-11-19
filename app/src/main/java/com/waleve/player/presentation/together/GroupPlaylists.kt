@@ -187,14 +187,14 @@ private fun NameAndFriendsDialog(
     var picked by remember { mutableStateOf(setOf<String>()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFFFAF9FD),
+        containerColor = com.waleve.player.presentation.theme.GlassPanel,
         title = { Text(title, fontWeight = FontWeight.ExtraBold, color = GlassInk) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (initialName != null) OutlinedTextField(
                     value = name, onValueChange = { if (it.length <= 60) name = it }, singleLine = true,
                     placeholder = { Text("Road trip mix", color = GlassMuted) },
-                    textStyle = TextStyle(color = GlassInk, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                    textStyle = TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = GlassAccent, cursorColor = GlassAccent),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -304,11 +304,11 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
         if (renaming) {
             var name by remember { mutableStateOf(pl.name) }
             AlertDialog(
-                onDismissRequest = { renaming = false }, containerColor = Color(0xFFFAF9FD),
+                onDismissRequest = { renaming = false }, containerColor = com.waleve.player.presentation.theme.GlassPanel,
                 title = { Text("Rename", fontWeight = FontWeight.ExtraBold, color = GlassInk) },
                 text = {
                     OutlinedTextField(name, { if (it.length <= 60) name = it }, singleLine = true,
-                        textStyle = TextStyle(color = GlassInk, fontSize = 16.sp),
+                        textStyle = TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 16.sp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = GlassAccent, cursorColor = GlassAccent))
                 },
                 confirmButton = { TextButton(onClick = { vm.rename(pl.id, name); renaming = false }, enabled = name.isNotBlank()) { Text("Save", color = GlassAccent, fontWeight = FontWeight.Bold) } },
@@ -318,7 +318,7 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
         if (confirmLeave) {
             val owner = pl.ownerId == me
             AlertDialog(
-                onDismissRequest = { confirmLeave = false }, containerColor = Color.White,
+                onDismissRequest = { confirmLeave = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu,
                 title = { Text(if (owner) "Delete “${pl.name}”?" else "Leave “${pl.name}”?", fontWeight = FontWeight.ExtraBold, color = GlassInk) },
                 text = { Text(if (owner) "It disappears for everyone. Songs stay on each phone." else "You won't see it any more. Others keep it.", color = GlassSub) },
                 confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leave(pl, onBack) }) { Text(if (owner) "Delete" else "Leave", color = GlassDanger, fontWeight = FontWeight.Bold) } },
@@ -340,7 +340,7 @@ fun GroupPlaylistDetailScreen(id: String, onBack: () -> Unit, vm: GroupPlaylistV
                 if (pl != null) Box {
                     var menu by remember { mutableStateOf(false) }
                     GlassIconButton(Icons.Rounded.MoreVert, { menu = true }, contentDescription = "More")
-                    DropdownMenu(menu, { menu = false }, containerColor = Color.White) {
+                    DropdownMenu(menu, { menu = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu) {
                         DropdownMenuItem(text = { Text("Rename", color = GlassInk) }, leadingIcon = { Icon(Icons.Rounded.Edit, null, tint = GlassAccent) }, onClick = { menu = false; renaming = true })
                         DropdownMenuItem(text = { Text("Invite friends", color = GlassInk) }, leadingIcon = { Icon(Icons.Rounded.PersonAdd, null, tint = GlassAccent) }, onClick = { menu = false; inviting = true })
                         DropdownMenuItem(

@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassMode
+import com.waleve.player.presentation.theme.GlassFill
 import com.waleve.player.presentation.theme.GlassAccentDeep
 import com.waleve.player.presentation.theme.GlassAccentLight
 import com.waleve.player.presentation.theme.GlassBlobLilac
@@ -90,13 +92,16 @@ val GlassGradientH: Brush = Brush.horizontalGradient(listOf(GlassAccentLight, Gl
 /** App-wide background: light gradient + four soft colour blobs (drawn once per frame, no blur pass). */
 @Composable
 fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, content: @Composable BoxScope.() -> Unit) {
+    val dark = GlassMode.dark
+    val mint = GlassBlobMint; val lilac = GlassBlobLilac; val sky = GlassBlobSky; val peach = GlassBlobPeach
     Box(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
                 drawRect(
                     Brush.linearGradient(
-                        listOf(Color(0xFFEEF2FA), Color(0xFFF7F1F6), Color(0xFFEEF6F2)),
+                        if (dark) listOf(Color(0xFF0C0F18), Color(0xFF151226), Color(0xFF0B1717))
+                        else listOf(Color(0xFFEEF2FA), Color(0xFFF7F1F6), Color(0xFFEEF6F2)),
                         start = Offset.Zero, end = Offset(size.width, size.height),
                     )
                 )
@@ -105,10 +110,11 @@ fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, cont
                     radius = r, center = Offset(cx, cy),
                 )
                 val w = size.width; val h = size.height; val r = w * 0.75f
-                blob(GlassBlobMint, 0.75f, w * 0.05f, h * 0.06f, r)
-                blob(GlassBlobLilac, 0.65f, w * 0.95f, h * 0.30f, r)
-                blob(GlassBlobSky, 0.6f, w * 0.0f, h * 0.70f, r)
-                blob(GlassBlobPeach, 0.6f, w * 0.95f, h * 0.88f, r)
+                val k = if (dark) 0.55f else 1f
+                blob(mint, 0.75f * k, w * 0.05f, h * 0.06f, r)
+                blob(lilac, 0.65f * k, w * 0.95f, h * 0.30f, r)
+                blob(sky, 0.6f * k, w * 0.0f, h * 0.70f, r)
+                blob(peach, 0.6f * k, w * 0.95f, h * 0.88f, r)
             },
     ) {
         // The playing song's cover, hugely blurred, glowing through every glass card.
@@ -131,17 +137,18 @@ fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, cont
                         filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { scaleX = 1.35f; scaleY = 1.35f; alpha = 0.95f }
+                            .graphicsLayer { scaleX = 1.35f; scaleY = 1.35f; alpha = if (dark) 0.85f else 0.95f }
                             .then(
                                 if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
                                 else Modifier
                             ),
                     )
-                    // milky wash so dark text stays readable on any cover
+                    // milky (light) / smoky (dark) wash so text stays readable on any cover
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
-                                listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.62f))
+                                if (dark) listOf(Color(0xFF0C0F18).copy(alpha = 0.62f), Color(0xFF0C0F18).copy(alpha = 0.42f), Color(0xFF0C0F18).copy(alpha = 0.52f), Color(0xFF0C0F18).copy(alpha = 0.72f))
+                                else listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.62f))
                             )
                         )
                     )
@@ -150,11 +157,11 @@ fun GlassBackground(modifier: Modifier = Modifier, artwork: String? = null, cont
                         Modifier.fillMaxSize().drawBehind {
                             val w = size.width; val h = size.height
                             drawCircle(
-                                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent), center = Offset(w * 0.15f, h * 0.12f), radius = w * 0.6f),
+                                Brush.radialGradient(listOf(Color.White.copy(alpha = if (dark) 0.10f else 0.55f), Color.Transparent), center = Offset(w * 0.15f, h * 0.12f), radius = w * 0.6f),
                                 radius = w * 0.6f, center = Offset(w * 0.15f, h * 0.12f),
                             )
                             drawCircle(
-                                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), center = Offset(w * 0.9f, h * 0.75f), radius = w * 0.55f),
+                                Brush.radialGradient(listOf(Color.White.copy(alpha = if (dark) 0.06f else 0.35f), Color.Transparent), center = Offset(w * 0.9f, h * 0.75f), radius = w * 0.55f),
                                 radius = w * 0.55f, center = Offset(w * 0.9f, h * 0.75f),
                             )
                         }
@@ -200,7 +207,9 @@ fun Modifier.springClick(
 }
 
 /** Bright top-left → soft bottom-right hairline: the "lit edge" of real glass. */
-val GlassEdge: Brush = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.9f)))
+val GlassEdge: Brush get() =
+    if (GlassMode.dark) Brush.linearGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.05f), Color.White.copy(alpha = 0.14f)))
+    else Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.9f)))
 
 /** Frosted-glass surface: translucent white + bright hairline + soft shadow. */
 fun Modifier.glass(
@@ -211,7 +220,7 @@ fun Modifier.glass(
 ): Modifier = this
     .then(if (elevation > 0.dp) Modifier.shadow(elevation, shape, ambientColor = Color(0x1423305A), spotColor = Color(0x1423305A)) else Modifier)
     .clip(shape)
-    .background(Color.White.copy(alpha = alpha))
+    .background(GlassFill.copy(alpha = if (GlassMode.dark) (alpha * 0.92f).coerceAtMost(0.9f) else alpha))
     .then(if (border) Modifier.border(1.dp, GlassEdge, shape) else Modifier)
 
 @Composable
@@ -343,7 +352,7 @@ fun GradientButton(
             .height(height)
             .then(if (enabled) Modifier.shadow(8.dp, shape, ambientColor = GlassAccent, spotColor = GlassAccent) else Modifier)
             .clip(shape)
-            .background(if (enabled) GlassGradientH else Brush.horizontalGradient(listOf(Color(0xFFC9CED8), Color(0xFFB8BECB))))
+            .background(if (enabled) GlassGradientH else Brush.horizontalGradient(if (GlassMode.dark) listOf(Color(0xFF3A4152), Color(0xFF2E3443)) else listOf(Color(0xFFC9CED8), Color(0xFFB8BECB))))
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -497,7 +506,7 @@ fun PhotoCard(
             Text(
                 title, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 2,
                 overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
-                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 1f), 4f)),
+                style = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 1f), 4f)),
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

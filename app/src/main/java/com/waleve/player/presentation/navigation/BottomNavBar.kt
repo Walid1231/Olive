@@ -93,8 +93,13 @@ fun BottomNavBar(
             .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp)
             .shadow(18.dp, shape, ambientColor = Color(0x2223305A), spotColor = Color(0x2223305A))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.97f), Color(0xFFF7F6FB).copy(alpha = 0.95f))))
-            .border(1.dp, Color.White, shape)
+            .background(
+                Brush.verticalGradient(
+                    if (com.waleve.player.presentation.theme.GlassMode.dark) listOf(Color(0xFF1E2333).copy(alpha = 0.94f), Color(0xFF161A26).copy(alpha = 0.94f))
+                    else listOf(Color.White.copy(alpha = 0.97f), Color(0xFFF7F6FB).copy(alpha = 0.95f))
+                )
+            )
+            .border(1.dp, com.waleve.player.presentation.components.GlassEdge, shape)
             .height(64.dp)
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

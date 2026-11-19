@@ -96,7 +96,7 @@ fun SleepTimerSheet(onDismiss: () -> Unit, vm: SleepTimerViewModel = hiltViewMod
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFFFAF9FD),
+        containerColor = com.waleve.player.presentation.theme.GlassPanel,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp).navigationBarsPadding().padding(bottom = 18.dp)) {

@@ -156,7 +156,7 @@ fun rememberSongDeleter(): (List<Song>) -> Unit {
         val onPhone = songs.any { !it.path.startsWith("http") }
         AlertDialog(
             onDismissRequest = { pending = null },
-            containerColor = Color.White,
+            containerColor = com.waleve.player.presentation.theme.GlassMenu,
             shape = RoundedCornerShape(28.dp),
             title = { Text("Delete $what?", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp) },
             text = {

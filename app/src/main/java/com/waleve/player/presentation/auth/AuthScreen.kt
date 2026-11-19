@@ -99,7 +99,7 @@ fun AuthScreen(
             Row(
                 Modifier.fillMaxWidth().height(54.dp)
                     .shadow(6.dp, RoundedCornerShape(20.dp), ambientColor = Color(0x1423305A), spotColor = Color(0x1423305A))
-                    .clip(RoundedCornerShape(20.dp)).background(Color.White)
+                    .clip(RoundedCornerShape(20.dp)).background(com.waleve.player.presentation.theme.GlassMenu)
                     .border(1.dp, GlassInk.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
                     .clickable(enabled = !isSigningIn) {
                         errorText = null

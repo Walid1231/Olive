@@ -147,11 +147,11 @@ fun SearchScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .clip(RoundedCornerShape(22.dp))
-                    .background(Color.White.copy(alpha = 0.78f))
+                    .background(com.waleve.player.presentation.theme.GlassFill.copy(alpha = 0.78f))
                     .border(
                         width = if (isSearchBarFocused) 1.5.dp else 1.dp,
                         color  = if (isSearchBarFocused) gc.accent.copy(alpha = 0.55f)
-                                 else Color.White,
+                                 else com.waleve.player.presentation.theme.GlassStroke,
                         shape  = RoundedCornerShape(22.dp),
                     ),
             ) {
@@ -194,7 +194,7 @@ fun SearchScreen(
                         focusedPlaceholderColor    = gc.textMuted,
                         unfocusedPlaceholderColor  = gc.textMuted,
                     ),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = gc.textPrimary, fontSize = 15.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = gc.textPrimary, fontSize = 15.sp),
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { if (query.isNotBlank()) viewModel.searchNow(query) }),
@@ -398,8 +398,8 @@ private fun SearchResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.72f))
-            .border(1.dp, if (isStreaming) accent.copy(alpha = 0.5f) else Color.White, RoundedCornerShape(20.dp))
+            .background(com.waleve.player.presentation.theme.GlassFill.copy(alpha = 0.72f))
+            .border(1.dp, if (isStreaming) accent.copy(alpha = 0.5f) else com.waleve.player.presentation.theme.GlassStroke, RoundedCornerShape(20.dp))
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -167,7 +167,7 @@ fun ListenTogetherSheet(onDismiss: () -> Unit, vm: TogetherViewModel = hiltViewM
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFFFAF9FD),
+        containerColor = com.waleve.player.presentation.theme.GlassPanel,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
     ) {
         Column(
@@ -372,7 +372,7 @@ private fun Bubble(m: com.waleve.player.domain.model.ChatMessage, mine: Boolean)
         Box(
             Modifier.widthIn(max = 260.dp)
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = if (mine) 18.dp else 6.dp, bottomEnd = if (mine) 6.dp else 18.dp))
-                .then(if (mine) Modifier.background(GlassGradientH) else Modifier.background(Color.White))
+                .then(if (mine) Modifier.background(GlassGradientH) else Modifier.background(com.waleve.player.presentation.theme.GlassMenu))
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             val emojiOnly = m.text.length <= 4 && m.text.none { it.isLetterOrDigit() }
@@ -417,13 +417,13 @@ private fun ChatPanel(messages: List<com.waleve.player.domain.model.ChatMessage>
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Color.White)
+                Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(com.waleve.player.presentation.theme.GlassMenu)
                     .padding(horizontal = 14.dp, vertical = 11.dp)
             ) {
                 if (text.isEmpty()) Text("Message…", color = GlassMuted, fontSize = 14.sp)
                 androidx.compose.foundation.text.BasicTextField(
                     value = text, onValueChange = { if (it.length <= 300) text = it },
-                    textStyle = androidx.compose.ui.text.TextStyle(color = GlassInk, fontSize = 14.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 14.sp),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(GlassAccent),
                     maxLines = 3, modifier = Modifier.fillMaxWidth(),
                 )

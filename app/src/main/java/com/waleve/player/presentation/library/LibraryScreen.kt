@@ -193,7 +193,7 @@ fun LibraryScreen(
                     if (searchQuery.isEmpty()) Text(if (isBooks) "Search audiobooks…" else "Search songs, artists, albums…", color = GlassMuted, fontSize = 14.sp)
                     androidx.compose.foundation.text.BasicTextField(
                         value = searchQuery, onValueChange = viewModel::updateSearchQuery, singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(color = GlassInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = GlassInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(GlassAccent),
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -279,8 +279,9 @@ private fun LibraryTile(icon: androidx.compose.ui.graphics.vector.ImageVector, t
         modifier.springClick(onClick = onClick).glass(RoundedCornerShape(20.dp)).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = GlassInk.copy(alpha = 0.85f), modifier = Modifier.size(20.dp))
+        val dark = com.waleve.player.presentation.theme.GlassMode.dark
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = if (dark) 0.22f else 0.6f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = if (dark) tint else GlassInk.copy(alpha = 0.85f), modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(10.dp))
         Column {
@@ -632,7 +633,7 @@ private fun AudiobooksTab(
                             Text("CONTINUE LISTENING", color = Color.White.copy(alpha = 0.8f), fontWeight = FontWeight.ExtraBold, fontSize = 10.sp, letterSpacing = 1.2.sp)
                             Spacer(Modifier.height(2.dp))
                             Text(ch.album.ifBlank { ch.title }, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 6f)))
+                                style = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 6f)))
                             Text("Chapter ${idx + 1} of ${book.size}  ·  ${ch.title}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(8.dp))
                             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.25f))) {
@@ -670,7 +671,7 @@ private fun AudiobooksTab(
                         Modifier.springClick { menu = true }.padding(8.dp).size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.MoreVert, "Book options", tint = Color.White, modifier = Modifier.size(18.dp)) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Color.White) {
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu) {
                         DropdownMenuItem(text = { Text("Play from start", color = GlassInk) }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null, tint = GlassAccent) },
                             onClick = { menu = false; if (chapters.isNotEmpty()) onSongClick(chapters, 0) })
                         DropdownMenuItem(text = { Text("Share with friend", color = GlassInk) }, leadingIcon = { Icon(Icons.Filled.Share, null, tint = GlassAccent) },

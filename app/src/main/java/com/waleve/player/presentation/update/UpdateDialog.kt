@@ -110,7 +110,7 @@ fun UpdateDialog(
     val downloading = state is DownloadState.Downloading
     Dialog(onDismissRequest = { if (!downloading) onLater() }, properties = DialogProperties(dismissOnClickOutside = !downloading)) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(Color(0xFFFAF9FD)).padding(22.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(com.waleve.player.presentation.theme.GlassPanel).padding(22.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(GlassGradient), contentAlignment = Alignment.Center) {

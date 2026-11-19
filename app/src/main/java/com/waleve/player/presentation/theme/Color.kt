@@ -1,6 +1,8 @@
 package com.waleve.player.presentation.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 // ── Ghibli Day Palette ─────────────────────────────────
 val GhibliSkyBlue     = Color(0xFF5BA4CF)
@@ -60,18 +62,33 @@ val SuccessGreen   = Color(0xFF4CAF50)
 val DividerColor   = Color(0xFF1E3345)
 
 // ── Light glassmorphism palette (Olive 1.2) ────────────
-val GlassInk          = Color(0xFF1C2333)
-val GlassSub          = Color(0xFF5B6478)
-val GlassMuted        = Color(0xFF8A93A6)
-val GlassAccent       = Color(0xFF2E9C73)
-val GlassAccentLight  = Color(0xFF46C190)
-val GlassAccentDeep   = Color(0xFF2E8FA8)
-val GlassSurface      = Color(0xFFF6F5FA)
-val GlassCard         = Color(0x9EFFFFFF)   // ~62 % white
-val GlassCardStrong   = Color(0xC7FFFFFF)   // ~78 % white
-val GlassStroke       = Color(0xE6FFFFFF)
-val GlassDanger       = Color(0xFFE0607E)
-val GlassBlobMint     = Color(0xFF9EE6C6)
-val GlassBlobLilac    = Color(0xFFC9B8FF)
-val GlassBlobPeach    = Color(0xFFFFCDB2)
-val GlassBlobSky      = Color(0xFFA9D6FF)
+/**
+ * Light / dark glass. Every Glass* colour below follows [GlassMode.dark], so the whole app
+ * switches together (Compose re-draws whatever reads them).
+ */
+object GlassMode {
+    var dark by androidx.compose.runtime.mutableStateOf(false)
+}
+private inline fun pick(light: Long, dark: Long) = Color(if (GlassMode.dark) dark else light)
+
+val GlassInk: Color         get() = pick(0xFF1C2333, 0xFFEEF1F8)
+val GlassSub: Color         get() = pick(0xFF5B6478, 0xFFB0B8CB)
+val GlassMuted: Color       get() = pick(0xFF8A93A6, 0xFF7F889D)
+val GlassAccent: Color      get() = pick(0xFF2E9C73, 0xFF4CC795)
+val GlassAccentLight: Color get() = pick(0xFF46C190, 0xFF5ED3A3)
+val GlassAccentDeep: Color  get() = pick(0xFF2E8FA8, 0xFF3FA6C2)
+val GlassSurface: Color     get() = pick(0xFFF6F5FA, 0xFF11141C)
+val GlassCard: Color        get() = pick(0x9EFFFFFF, 0x8C1C2130)   // ~62 % white / smoked glass
+val GlassCardStrong: Color  get() = pick(0xC7FFFFFF, 0xB31C2130)
+val GlassStroke: Color      get() = pick(0xE6FFFFFF, 0x2EFFFFFF)
+val GlassDanger: Color      get() = pick(0xFFE0607E, 0xFFFF7A96)
+/** Tint of every glass surface (white in light mode, smoky blue-black in dark). */
+val GlassFill: Color        get() = pick(0xFFFFFFFF, 0xFF1B2030)
+/** Opaque panels: bottom sheets, dialogs. */
+val GlassPanel: Color       get() = pick(0xFFFAF9FD, 0xFF161A24)
+/** Popup menus, chat bubbles, text fields. */
+val GlassMenu: Color        get() = pick(0xFFFFFFFF, 0xFF232838)
+val GlassBlobMint: Color  get() = pick(0xFF9EE6C6, 0xFF1F8A66)
+val GlassBlobLilac: Color get() = pick(0xFFC9B8FF, 0xFF5B47C9)
+val GlassBlobPeach: Color get() = pick(0xFFFFCDB2, 0xFF9A4A5E)
+val GlassBlobSky: Color   get() = pick(0xFFA9D6FF, 0xFF1F5FA8)

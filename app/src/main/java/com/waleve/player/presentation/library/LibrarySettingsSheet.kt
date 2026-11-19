@@ -14,6 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.BrightnessAuto
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -89,7 +92,7 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFFFAF9FD),
+        containerColor = com.waleve.player.presentation.theme.GlassPanel,
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
     ) {
         Column(
@@ -99,7 +102,20 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Tune, null, tint = GlassAccentDeep, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Library settings", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text("Settings", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            }
+            // ── Appearance ──
+            val themeVm: com.waleve.player.presentation.theme.ThemeViewModel = hiltViewModel()
+            val appearance by themeVm.mode.collectAsStateWithLifecycle()
+            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.9f).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text("Appearance", color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Dark glass keeps the blurred cover behind everything", color = GlassSub, fontSize = 12.sp)
+                Spacer(Modifier.size(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.waleve.player.presentation.components.GlassChip("Auto", appearance == 0, { themeVm.setMode(0) }, icon = Icons.Rounded.BrightnessAuto)
+                    com.waleve.player.presentation.components.GlassChip("Light", appearance == 1, { themeVm.setMode(1) }, icon = Icons.Rounded.LightMode)
+                    com.waleve.player.presentation.components.GlassChip("Dark", appearance == 2, { themeVm.setMode(2) }, icon = Icons.Rounded.DarkMode)
+                }
             }
             SettingRow("Hide voice notes & recordings", "WhatsApp voice notes, call recordings, ringtones and clips under 20 s", hideJunk, vm::setHideJunk)
             SettingRow("Find missing covers online", "Songs and audiobooks without artwork get a matching cover", autoCovers, vm::setAutoCovers)

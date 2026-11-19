@@ -32,9 +32,14 @@ import com.waleve.player.presentation.update.UpdateDialog
 fun WaLeveAppContent() {
     val themeViewModel: ThemeViewModel = hiltViewModel()
     @Suppress("UNUSED_VARIABLE") val unusedTheme = themeViewModel
-    val isNightMode = false   // Olive 1.2: light glass only
+    // Light / Dark / follow the phone (Library → ⚙ → Appearance)
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.remember { com.waleve.player.presentation.theme.AppearancePrefs.init(appCtx.applicationContext) }
+    val appearance by themeViewModel.mode.collectAsStateWithLifecycle()
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isNightMode = when (appearance) { 1 -> false; 2 -> true; else -> systemDark }
 
-    WaLeveTheme(isNightMode = false) {
+    WaLeveTheme(isNightMode = isNightMode) {
       // The playing song's cover becomes the blurred backdrop behind all the glass
       val bgPlayer: PlayerViewModel = hiltViewModel()
       val bgState by bgPlayer.playerState.collectAsStateWithLifecycle()

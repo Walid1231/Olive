@@ -25,32 +25,40 @@ val FrauncesFamily = FontFamily(
     Font(googleFont = fraunces, fontProvider = fontProvider, weight = FontWeight.Bold),
 )
 
-val ManropeFamily = FontFamily(
-    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Light),
-    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Normal),
-    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Medium),
-    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.SemiBold),
-    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Bold),
+/** Outfit — the app's font (downloaded once through Google Play services, then cached). */
+val outfit = GoogleFont("Outfit")
+
+val OutfitFamily = FontFamily(
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.Light),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.Normal),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.Medium),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.Bold),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.ExtraBold),
+    Font(googleFont = outfit, fontProvider = fontProvider, weight = FontWeight.Black),
 )
+
+/** Kept for old references — now Outfit everywhere. */
+val ManropeFamily = OutfitFamily
 
 val WaLeveTypography = Typography(
     // Display — Fraunces serif for big hero text
     displayLarge = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 36.sp,
         lineHeight = 44.sp,
         color = Cream,
     ),
     displayMedium = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 36.sp,
         color = Cream,
     ),
     displaySmall = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
@@ -58,21 +66,21 @@ val WaLeveTypography = Typography(
     ),
     // Headlines — Fraunces for song titles / section headers
     headlineLarge = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
         color = Cream,
     ),
     headlineMedium = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 20.sp,
         lineHeight = 26.sp,
         color = Cream,
     ),
     headlineSmall = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 18.sp,
         lineHeight = 24.sp,
@@ -80,21 +88,21 @@ val WaLeveTypography = Typography(
     ),
     // Titles — Manrope for screen titles
     titleLarge = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 28.sp,
         color = Cream,
     ),
     titleMedium = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         color = Cream,
     ),
     titleSmall = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
@@ -102,21 +110,21 @@ val WaLeveTypography = Typography(
     ),
     // Body — Manrope for all body/UI text
     bodyLarge = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         color = Cream,
     ),
     bodyMedium = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         color = Sage,
     ),
     bodySmall = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
@@ -124,21 +132,21 @@ val WaLeveTypography = Typography(
     ),
     // Labels — Manrope
     labelLarge = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         color = Cream,
     ),
     labelMedium = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         color = Sage,
     ),
     labelSmall = TextStyle(
-        fontFamily = ManropeFamily,
+        fontFamily = OutfitFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 10.sp,
         lineHeight = 14.sp,
