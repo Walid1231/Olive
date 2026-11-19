@@ -154,8 +154,12 @@ fun NowPlayingScreen(
     // Context label: show album name like Spotify shows playlist name
     val contextLabel  = song?.album?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Now Playing"
 
-    // Detect audio output for cosmetic display
-    val audioOutput = remember(context) { detectAudioOutput(context) }
+    // Connected earbuds (name + Left / Right / Case battery) or the phone's own output
+    val headset by playerViewModel.headset.collectAsStateWithLifecycle()
+    val audioOutput = remember(context, headset?.name) { detectAudioOutput(context) }
+    val budsPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { playerViewModel.refreshHeadset() }
 
     // ── Animated colours ─────────────────────────────────────────────────────
     val bgTop by animateColorAsState(
@@ -503,42 +507,14 @@ fun NowPlayingScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Audio Output Indicator ────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .glass(RoundedCornerShape(16.dp), alpha = 0.6f, elevation = 0.dp)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = audioOutput.icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = audioOutput.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = NpInk.copy(alpha = 0.70f),
-                    fontSize = 11.sp,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                // Sleep timer inline
-                val isSleepActive = sleepTimerRemaining > 0
-                val sleepLabel = if (isSleepActive) {
-                    "⏾ " + formatSleep(sleepTimerRemaining)
-                } else null
-                if (sleepLabel != null) {
-                    Text(
-                        text = sleepLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = accentColor,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
+            // ── Audio output + earbuds battery ─────────────────────────────────
+            OutputBatteryRow(
+                headset = headset,
+                fallback = audioOutput,
+                accent = accentColor,
+                sleepLabel = if (sleepTimerRemaining > 0) "⏾ " + formatSleep(sleepTimerRemaining) else null,
+                onAskPermission = { budsPermission.launch(com.waleve.player.service.HeadsetBatteryMonitor.permissions()) },
+            )
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -721,6 +697,114 @@ private fun SpotifyActionButton(
             fontSize = 10.sp,
             maxLines = 1,
         )
+    }
+}
+
+// ── Audio output + earbuds battery row ─────────────────────────────────────────
+
+@Composable
+private fun OutputBatteryRow(
+    headset: com.waleve.player.service.HeadsetBattery?,
+    fallback: AudioOutputInfo,
+    accent: Color,
+    sleepLabel: String?,
+    onAskPermission: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .glass(RoundedCornerShape(18.dp), alpha = 0.6f, elevation = 0.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (headset != null) Icons.Filled.Headphones else fallback.icon,
+                contentDescription = null, tint = accent, modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                headset?.name ?: fallback.label,
+                color = NpInk.copy(alpha = 0.78f), fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            // Earbuds that only share one level: show it right here
+            if (headset != null && !headset.hasSides && headset.overall != null) {
+                BudBattery(null, headset.overall, false, accent)
+                if (sleepLabel != null) Spacer(Modifier.width(8.dp))
+            }
+            if (sleepLabel != null) {
+                Text(sleepLabel, color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        when {
+            headset == null -> Unit
+            !headset.canRead -> {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.springClick(onClick = onAskPermission)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(accent.copy(alpha = 0.14f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Bluetooth, null, tint = accent, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Show earbuds battery", color = accent, fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
+                }
+            }
+            headset.hasSides -> {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    headset.left?.let { BudBattery("L", it, headset.leftCharging, accent) }
+                    headset.right?.let { BudBattery("R", it, headset.rightCharging, accent) }
+                    headset.case?.let { BudBattery("Case", it, headset.caseCharging, accent) }
+                }
+            }
+        }
+    }
+}
+
+/** "L ▮▮▮▯ 80%" — a tiny battery that turns amber / red when low and green while charging. */
+@Composable
+private fun BudBattery(label: String?, level: Int, charging: Boolean, accent: Color) {
+    val color = when {
+        charging -> Color(0xFF34C759)
+        level <= 20 -> Color(0xFFFF5A5F)
+        level <= 40 -> Color(0xFFF5A524)
+        else -> accent
+    }
+    Row(
+        Modifier.clip(RoundedCornerShape(10.dp)).background(NpInk.copy(alpha = 0.07f))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (label != null) {
+            Text(label, color = NpInk.copy(alpha = 0.6f), fontWeight = FontWeight.ExtraBold, fontSize = 10.5.sp)
+            Spacer(Modifier.width(5.dp))
+        }
+        Box(
+            Modifier.size(width = 19.dp, height = 10.dp)
+                .border(1.2.dp, color.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+                .padding(1.6.dp),
+        ) {
+            Box(
+                Modifier.fillMaxWidth((level / 100f).coerceIn(0.06f, 1f))
+                    .height(6.8.dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(color),
+            )
+        }
+        Box(
+            Modifier.size(width = 2.dp, height = 4.dp)
+                .clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp))
+                .background(color.copy(alpha = 0.85f)),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text("$level%", color = NpInk, fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp)
+        if (charging) {
+            Text(" ⚡", color = color, fontSize = 10.sp)
+        }
     }
 }
 

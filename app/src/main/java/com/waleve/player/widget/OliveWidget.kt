@@ -41,6 +41,7 @@ class OliveWidgetProvider : AppWidgetProvider() {
     interface Deps {
         fun playbackController(): PlaybackController
         fun localMusicRepository(): com.waleve.player.domain.repository.LocalMusicRepository
+        fun headsetBattery(): com.waleve.player.service.HeadsetBatteryMonitor
     }
 
     private fun start(context: Context) {
@@ -103,6 +104,7 @@ object OliveWidget {
     @Volatile private var lastArtKey: String? = null
     @Volatile private var lastArt: Bitmap? = null
     @Volatile private var lastThumb: Bitmap? = null
+    @Volatile private var buds: com.waleve.player.service.HeadsetBattery? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var watching = false
 
@@ -130,6 +132,15 @@ object OliveWidget {
                     lastPos = ps.currentPosition; lastDur = ps.duration
                     push(app, st)
                 }
+        }
+        // Earbuds battery → small pill above the time
+        scope.launch {
+            val monitor = EntryPointAccessors.fromApplication(app, OliveWidgetProvider.Deps::class.java).headsetBattery()
+            monitor.start()
+            monitor.state.debounce(500).collect { b ->
+                buds = b
+                pushBuds(app)
+            }
         }
         // Progress bar + seek jumps (time text runs by itself)
         scope.launch {
@@ -163,6 +174,22 @@ object OliveWidget {
         runCatching { AppWidgetManager.getInstance(context).partiallyUpdateAppWidget(ids, v) }
     }
 
+    private fun budsText(): String? = buds?.takeIf { it.hasAny }?.shortText()
+
+    private fun applyBuds(v: RemoteViews) {
+        val text = budsText()
+        v.setViewVisibility(R.id.widget_buds, if (text != null) android.view.View.VISIBLE else android.view.View.GONE)
+        if (text != null) v.setTextViewText(R.id.widget_buds_text, text)
+    }
+
+    private fun pushBuds(context: Context) {
+        val ids = ids(context)
+        if (ids.isEmpty()) return
+        val v = RemoteViews(context.packageName, R.layout.widget_player)
+        applyBuds(v)
+        runCatching { AppWidgetManager.getInstance(context).partiallyUpdateAppWidget(ids, v) }
+    }
+
     private suspend fun push(context: Context, s: State) {
         val ids = ids(context)
         if (ids.isEmpty()) return
@@ -193,6 +220,7 @@ object OliveWidget {
             views.setChronometer(R.id.widget_remaining, now + (lastDur - lastPos).coerceAtLeast(0), "-%s", s.playing)
         }
         views.setProgressBar(R.id.widget_progress, 1000, progressValue(), false)
+        applyBuds(views)
 
         // Cover (big, rounded) + small round thumb in the pill
         val (art, thumb) = loadArt(context, s.art)

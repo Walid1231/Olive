@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two earbuds (Olive widget battery pill) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M7,4.5a3.5,3.5 0,1 1,0 7a3.5,3.5 0,1 1,0 -7z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M8.4,10.2h2.1v8.6a1.05,1.05 0,0 1,-2.1 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M17,4.5a3.5,3.5 0,1 1,0 7a3.5,3.5 0,1 1,0 -7z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M13.5,10.2h2.1v8.6a1.05,1.05 0,0 1,-2.1 0z" />
+</vector>

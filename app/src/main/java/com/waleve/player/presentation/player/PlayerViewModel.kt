@@ -24,7 +24,13 @@ class PlayerViewModel @Inject constructor(
     val playbackController: PlaybackController,
     private val localMusicRepository: LocalMusicRepository,
     private val lyricsRepository: LyricsRepository,
+    private val headsetMonitor: com.waleve.player.service.HeadsetBatteryMonitor,
 ) : ViewModel() {
+
+    /** Connected earbuds + their battery (null = no Bluetooth audio). */
+    val headset: StateFlow<com.waleve.player.service.HeadsetBattery?> = headsetMonitor.state
+
+    fun refreshHeadset() = headsetMonitor.refresh()
 
     val playerState: StateFlow<PlayerState> = playbackController.playerState
 

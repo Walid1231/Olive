@@ -39,6 +39,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var mediaExtractorWarm: com.waleve.player.data.extractor.MediaExtractor
 
+    @Inject
+    lateinit var headsetBattery: com.waleve.player.service.HeadsetBatteryMonitor
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -60,10 +63,21 @@ class MainActivity : ComponentActivity() {
             if (cached == null || System.currentTimeMillis() - cached.fetchedAt > 30 * 60_000) runCatching { ytMusic.home() }
         }
         com.waleve.player.widget.OliveWidget.watch(this, playbackController)
+        headsetBattery.start()
 
         setContent {
             WaLeveAppContent()
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        headsetBattery.setForeground(true)
+    }
+
+    override fun onStop() {
+        headsetBattery.setForeground(false)
+        super.onStop()
     }
 
     private fun requestRequiredPermissions() {
