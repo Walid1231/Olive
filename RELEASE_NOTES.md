@@ -9,6 +9,12 @@
 - A header with the title (2 lines) and its length, Audio/Video as a sliding pill, and "SAVE TO" with **Song** / **Audiobook** cards. Each card has an icon and a short explanation, so nothing is cut off.
 - Quality options are glass cards with a **BEST** badge on the recommended one and a round download button.
 
+### Downloads finish much faster
+- The long "Finalizing…" wait was the phone re-encoding the whole file into MP3 (minutes for a long audiobook). **M4A · original quality** is now the default: it keeps YouTube's audio as-is, so it finishes in seconds and sounds identical.
+- Opus also downloads the matching stream and just copies it. MP3 still works, with a faster encoder setting.
+- Saving into your library uses a faster copy, and there is less waiting on the media scan.
+- After 100% you now see what's happening ("Adding cover & chapters…", "Converting to MP3 on your phone…"). Long waits show minutes, too.
+
 - **Continue listening follows the player.** While that book is playing it says "Now listening", with a **Pause** button and live progress. **Resume** carries on from where you are instead of restarting.
 - If the app ever loses its link to the music service, it reconnects by itself, so play/pause always shows the truth.
 - The **"Stories for every mood"** banner no longer cuts off its title.

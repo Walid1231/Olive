@@ -110,7 +110,8 @@ class DownloadViewModel @Inject constructor(
                 onProgress = { progress, etaSec, line ->
                     val etaText = when {
                         line == "SAVING_TO_LIBRARY" -> "Saving to Library…"
-                        etaSec > 0 -> "${etaSec}s remaining"
+                        line.startsWith("POST:") -> line.removePrefix("POST:")
+                        etaSec > 0 -> if (etaSec >= 60) "${etaSec / 60}m ${etaSec % 60}s remaining" else "${etaSec}s remaining"
                         progress >= 99f -> "Finalizing…"
                         else -> "Processing…"
                     }

@@ -259,6 +259,7 @@ class SearchViewModel @Inject constructor(
                 onProgress = { progress, _, line ->
                     val status = when {
                         line == "SAVING_TO_LIBRARY" -> "Saving to Library…"
+                        line.startsWith("POST:") -> line.removePrefix("POST:")
                         progress >= 99f -> "Finalizing…"
                         else -> "${progress.toInt()}%"
                     }

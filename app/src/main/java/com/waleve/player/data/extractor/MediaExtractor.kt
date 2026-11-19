@@ -568,10 +568,19 @@ class MediaExtractor @Inject constructor(
                     fid.startsWith(CONVERT_PREFIX) -> {
                         // Audio conversion: mp3 / m4a / opus / flac / wav / vorbis(ogg) / alac
                         val codec = fid.removePrefix(CONVERT_PREFIX)
-                        request.addOption("-f", "bestaudio/best")
+                        // Pick a source that already is the target codec, so yt-dlp only copies
+                        // the audio into the new file (seconds) instead of re-encoding it (minutes).
+                        request.addOption("-f", when (codec) {
+                            "opus" -> "bestaudio[acodec=opus]/bestaudio/best"
+                            else -> "bestaudio[ext=m4a]/bestaudio/best"
+                        })
                         request.addOption("-x")
                         request.addOption("--audio-format", codec)
                         request.addOption("--audio-quality", if (codec == "mp3") "320K" else "0")
+                        if (codec == "mp3") {
+                            // LAME's faster mode: about 1.5–2x quicker, no audible difference at 320 kbps
+                            request.addOption("--postprocessor-args", "ExtractAudio+ffmpeg_o:-compression_level 6")
+                        }
                     }
                     fid.startsWith(VIDEO_PREFIX) -> {
                         val h = fid.removePrefix(VIDEO_PREFIX).toIntOrNull()
@@ -581,6 +590,8 @@ class MediaExtractor @Inject constructor(
                         request.addOption("--remux-video", "mp4")
                     }
                     fid == "mp3_320" -> {           // legacy id kept for old callers
+                        request.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                        request.addOption("--postprocessor-args", "ExtractAudio+ffmpeg_o:-compression_level 6")
                         request.addOption("-x")
                         request.addOption("--audio-format", "mp3")
                         request.addOption("--audio-quality", "320K")
@@ -607,7 +618,8 @@ class MediaExtractor @Inject constructor(
                 }
             }) { request ->
                 YoutubeDL.getInstance().execute(request, processId) { progress, etaInSeconds, line ->
-                    onProgress(progress, etaInSeconds, line ?: "")
+                    if (progress >= 99.9f) onProgress(100f, 0, "POST:" + postLabel(format, category))
+                    else onProgress(progress, etaInSeconds, line ?: "")
                 }
             }
 
@@ -653,6 +665,19 @@ class MediaExtractor @Inject constructor(
         }
     }
 
+    /** What the phone is doing after the download reaches 100%. */
+    private fun postLabel(format: MediaFormat, category: DownloadCategory): String {
+        val fid = format.formatId
+        val codec = fid.removePrefix(CONVERT_PREFIX)
+        return when {
+            fid.startsWith(VIDEO_PREFIX) || format.isVideoOnly -> "Joining video and sound…"
+            fid.startsWith(CONVERT_PREFIX) && codec in setOf("mp3", "flac", "wav", "vorbis") ->
+                "Converting to ${codec.replace("vorbis", "ogg").uppercase()} on your phone…"
+            category == DownloadCategory.AUDIOBOOK -> "Adding cover & chapters…"
+            else -> "Adding cover & tags…"
+        }
+    }
+
     /**
      * Copy a finished file into public storage so it shows up in the library / gallery:
      *   Songs → Music/Olive, Audiobooks → Audiobooks/Olive, Videos → Movies/Olive.
@@ -687,8 +712,17 @@ class MediaExtractor @Inject constructor(
                 android.provider.MediaStore.Audio.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
             val itemUri = resolver.insert(collection, values) ?: return@withContext null
-            resolver.openOutputStream(itemUri)?.use { out ->
-                java.io.BufferedInputStream(java.io.FileInputStream(file), 1 shl 20).use { it.copyTo(out, 1 shl 20) }
+            resolver.openFileDescriptor(itemUri, "w")?.use { pfd ->
+                java.io.FileOutputStream(pfd.fileDescriptor).channel.use { outCh ->
+                    java.io.FileInputStream(file).channel.use { inCh ->
+                        val size = inCh.size(); var pos = 0L
+                        while (pos < size) {
+                            val n = inCh.transferTo(pos, size - pos, outCh)
+                            if (n <= 0) break
+                            pos += n
+                        }
+                    }
+                }
             }
             values.clear()
             values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
@@ -713,7 +747,7 @@ class MediaExtractor @Inject constructor(
     }
 
     private suspend fun awaitMediaScan(path: String, mime: String) {
-        kotlinx.coroutines.withTimeoutOrNull(8_000) {
+        kotlinx.coroutines.withTimeoutOrNull(2_500) {
             kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
                 android.media.MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf(mime)) { _, _ ->
                     if (cont.isActive) cont.resume(Unit)
@@ -759,9 +793,9 @@ class MediaExtractor @Inject constructor(
                 label = label, tag = tag, bitrate = kbps,
             )
             return listOf(
-                fmt("mp3", "mp3", "MP3 · 320 kbps", "Works everywhere", 320),
-                fmt("m4a", "m4a", "M4A / AAC", "Small · great on phones", maxOf(sourceKbps, 128)),
-                fmt("opus", "opus", "Opus", "Smallest · original codec", maxOf(sourceKbps, 128)),
+                fmt("m4a", "m4a", "M4A · original quality", "Fastest · no conversion", maxOf(sourceKbps, 128)),
+                fmt("opus", "opus", "Opus · original quality", "Smallest · no conversion", maxOf(sourceKbps, 128)),
+                fmt("mp3", "mp3", "MP3 · 320 kbps", "Works everywhere · converts, slower", 320),
                 fmt("flac", "flac", "FLAC", "Lossless container · big", 900),
                 fmt("wav", "wav", "WAV", "Uncompressed · huge", 1411),
                 fmt("vorbis", "ogg", "OGG Vorbis", "Open format", 192),
