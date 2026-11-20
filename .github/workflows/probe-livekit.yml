@@ -1,0 +1,17 @@
+name: probe livekit
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s https://repo1.maven.org/maven2/io/livekit/livekit-android/maven-metadata.xml | grep -E "<latest>|<release>"
+          V=$(curl -s https://repo1.maven.org/maven2/io/livekit/livekit-android/maven-metadata.xml | sed -n 's:.*<release>\(.*\)</release>.*:\1:p')
+          echo "VERSION=$V"
+          curl -sL -o s.jar https://repo1.maven.org/maven2/io/livekit/livekit-android/$V/livekit-android-$V-sources.jar
+          mkdir s && cd s && unzip -q ../s.jar
+          for f in $(grep -rlE "class LocalAudioTrackOptions|class AudioTrackPublishDefaults|class AudioOptions|class LiveKitOverrides|interface AudioBufferCallback|class RoomOptions\b|data class RoomOptions" .); do echo "=== $f"; grep -nE "val |var |class |fun |interface " $f | head -40; done
+          echo "=== LiveKit.create"; grep -rn "fun create(" --include=LiveKit.kt . | head
+          echo "=== setAudioBufferCallback"; grep -rn "fun setAudioBufferCallback\|fun setMicrophoneEnabled\|fun connect(\|fun disconnect\|fun release()" . | head
+          echo "=== setAudioRecordEnabled / stereo"; grep -rn "setAudioRecordEnabled\|setUseStereoInput\|audioDeviceModule" . | head -15
+          curl -s https://repo1.maven.org/maven2/io/livekit/livekit-android/$V/livekit-android-$V.pom | grep -A3 "<artifactId>" | head -60
