@@ -85,8 +85,8 @@ fun SaveAsToggle(
                         contentAlignment = Alignment.Center,
                     ) { Icon(icon, null, tint = if (on) Color.White else GlassAccent, modifier = Modifier.size(18.dp)) }
                     Spacer(Modifier.width(9.dp))
-                    Column {
-                        Text(text.first, color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp, maxLines = 1)
+                    Column(Modifier.weight(1f)) {
+                        FitText(text.first, color = fg, fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold)
                         Text(text.second, color = sub, fontWeight = FontWeight.Medium, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }

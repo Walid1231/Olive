@@ -1,5 +1,8 @@
 package com.waleve.player.presentation.components
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -270,6 +273,37 @@ fun GlassChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: M
 data class SegmentOption(val label: String, val icon: ImageVector? = null, val count: Int? = null)
 
 /**
+ * One line of text that always shows in full: if it doesn't fit (big system font, small phone),
+ * it shrinks a little at a time instead of being cut off.
+ */
+@Composable
+fun FitText(
+    text: String,
+    color: Color,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    minFontSize: androidx.compose.ui.unit.TextUnit = 9.sp,
+) {
+    var size by remember(text, fontSize) { androidx.compose.runtime.mutableStateOf(fontSize) }
+    var ready by remember(text, fontSize) { androidx.compose.runtime.mutableStateOf(false) }
+    Text(
+        text,
+        color = color,
+        fontSize = size,
+        fontWeight = fontWeight,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        modifier = modifier.drawWithContent { if (ready) drawContent() },
+        onTextLayout = { r ->
+            if (r.didOverflowWidth && size.value > minFontSize.value) size = (size.value * 0.92f).sp
+            else ready = true
+        },
+    )
+}
+
+/**
  * Glass segmented control (Songs | Audiobooks, Inbox | Friends | Requests …).
  * One gradient pill slides under the chosen option. Only its position animates (no fading
  * between two pills), so nothing flickers when switching.
@@ -311,23 +345,28 @@ fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) 
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = !on) {
                             hf.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelect(i)
-                        },
+                        }
+                        .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)) }
-                    // label and count together in one piece of text (no separate number box)
-                    Text(
-                        androidx.compose.ui.text.buildAnnotatedString {
-                            append(opt.label)
-                            opt.count?.let { c ->
-                                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold, color = fg.copy(alpha = if (on) 0.8f else 0.65f)))
-                                append("  ·  $c")
-                                pop()
-                            }
-                        },
-                        color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    opt.icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(6.dp)) }
+                    FitText(opt.label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f, fill = false))
+                    opt.count?.takeIf { it > 0 }?.let { c ->
+                        Spacer(Modifier.width(5.dp))
+                        Box(
+                            Modifier.heightIn(min = 18.dp).widthIn(min = 18.dp).clip(CircleShape)
+                                .background(if (on) Color.White.copy(alpha = 0.28f) else GlassAccent.copy(alpha = 0.16f))
+                                .padding(horizontal = 5.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (c > 99) "99+" else c.toString(),
+                                color = if (on) Color.White else GlassAccent,
+                                fontWeight = FontWeight.ExtraBold, fontSize = 10.5.sp, maxLines = 1, softWrap = false,
+                            )
+                        }
+                    }
                 }
             }
         }

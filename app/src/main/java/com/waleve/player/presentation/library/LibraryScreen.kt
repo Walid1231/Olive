@@ -889,18 +889,18 @@ private fun KindSwitch(songs: Int, books: Int, booksSelected: Boolean, onSelect:
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = null, enabled = !on,
                         ) { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(isBook) }
-                        .padding(horizontal = 12.dp),
+                        .padding(start = 10.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
-                        Modifier.size(36.dp).clip(CircleShape)
+                        Modifier.size(34.dp).clip(CircleShape)
                             .background(if (on) Color.White.copy(alpha = 0.22f) else GlassAccent.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center,
                     ) { Icon(icon, null, tint = if (on) Color.White else GlassAccent, modifier = Modifier.size(19.dp)) }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(text.first, color = fg, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1)
-                        Text(text.second, color = sub, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, maxLines = 1)
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        com.waleve.player.presentation.components.FitText(text.first, color = fg, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        com.waleve.player.presentation.components.FitText(text.second, color = sub, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
