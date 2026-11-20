@@ -1,5 +1,6 @@
 package com.waleve.player.presentation.home
 
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.background
 import com.waleve.player.presentation.components.springClick
 import androidx.compose.foundation.clickable
@@ -122,13 +123,15 @@ fun HomeScreen(
                 if (sleepSheet) com.waleve.player.presentation.player.SleepTimerSheet(onDismiss = { sleepSheet = false })
                 Spacer(Modifier.width(8.dp))
                 Box {
-                    GlassIconButton(Icons.Rounded.Notifications, onOpenFriends, contentDescription = "Inbox")
-                    if (notificationCount > 0) {
-                        Box(
-                            Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(Color(0xFFE0607E)),
-                            contentAlignment = Alignment.Center,
-                        ) { Text(if (notificationCount > 9) "9+" else "$notificationCount", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold) }
-                    }
+                    GlassIconButton(
+                        Icons.Rounded.Notifications, onOpenFriends,
+                        contentDescription = if (notificationCount > 0) "Inbox, $notificationCount new" else "Inbox",
+                    )
+                    com.waleve.player.presentation.components.CountBadge(
+                        notificationCount,
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-5).dp),
+                        ring = com.waleve.player.presentation.theme.GlassPanel,
+                    )
                 }
                 Spacer(Modifier.width(10.dp))
                 Avatar(profile?.avatarUrl, profile?.displayName ?: "Olive", 44.dp, Modifier.springClick(onClick = onOpenProfile))

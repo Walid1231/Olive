@@ -8,6 +8,7 @@ import com.waleve.player.domain.repository.StreamRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import javax.inject.Singleton
 
 /**
@@ -20,6 +21,7 @@ class StreamRepositoryImpl @Inject constructor(
     private val mediaExtractor: MediaExtractor,
     @ApplicationContext private val context: Context,
     private val ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser,
+    private val resolver: com.waleve.player.data.remote.StreamResolver,
 ) : StreamRepository {
 
     /**
@@ -54,60 +56,85 @@ class StreamRepositoryImpl @Inject constructor(
      * Returns the best audio stream URL for the given video ID.
      * Uses yt-dlp via [MediaExtractor] for reliable extraction.
      */
-    /** videoId → (url, expires at). Links stay valid for a few hours. */
-    private val urlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    /** videoId → link (+ headers). Links stay valid for a few hours. */
+    private val urlCache = java.util.concurrent.ConcurrentHashMap<String, com.waleve.player.domain.model.StreamLink>()
     private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     private val prefetching = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** One look-up per song at a time (taps + prefetch + the player share it). */
+    private val inFlight = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<com.waleve.player.domain.model.StreamLink?>>()
 
-    // Links last ~6 hours: keep them on disk so songs start instantly after reopening the app
-    private val linkPrefs by lazy { context.getSharedPreferences("stream_links", Context.MODE_PRIVATE) }
+    // Links last ~6 hours: kept on disk so songs start instantly after reopening the app.
+    // Stored as  expires \u0001 via \u0001 headers-json \u0001 url
+    private val linkPrefs by lazy { context.getSharedPreferences("stream_links_v2", Context.MODE_PRIVATE) }
     init {
         bg.launch {
             val now = System.currentTimeMillis()
             val stale = mutableListOf<String>()
             linkPrefs.all.forEach { (id, v) ->
-                val str = v as? String ?: return@forEach
-                val exp = str.substringBefore('|').toLongOrNull() ?: 0L
-                if (exp - now > 15 * 60_000) urlCache.putIfAbsent(id, str.substringAfter('|') to exp) else stale += id
+                val parts = (v as? String)?.split('\u0001') ?: return@forEach
+                val exp = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+                if (parts.size == 4 && exp - now > 15 * 60_000) {
+                    val h = runCatching {
+                        val o = org.json.JSONObject(parts[2]); o.keys().asSequence().associateWith { o.optString(it) }
+                    }.getOrDefault(emptyMap())
+                    urlCache.putIfAbsent(id, com.waleve.player.domain.model.StreamLink(parts[3], h, exp, parts[1]))
+                } else stale += id
             }
             if (stale.isNotEmpty()) linkPrefs.edit().apply { stale.forEach { remove(it) } }.apply()
+            // the old store (links without headers) is no longer used
+            runCatching { context.deleteSharedPreferences("stream_links") }
         }
+        // Get YouTube's player code ready now, so the first song doesn't wait for it
+        bg.launch { resolver.warmUp() }
     }
 
-    private fun remember(videoId: String, link: Pair<String, Long>) {
+    private fun remember(videoId: String, link: com.waleve.player.domain.model.StreamLink) {
         urlCache[videoId] = link
-        linkPrefs.edit().putString(videoId, "${link.second}|${link.first}").apply()
+        val h = org.json.JSONObject(link.headers).toString()
+        linkPrefs.edit().putString(videoId, listOf(link.expiresAt.toString(), link.via, h, link.url).joinToString("\u0001")).apply()
+    }
+
+    private fun cached(videoId: String, minLeftMs: Long = 10 * 60_000): com.waleve.player.domain.model.StreamLink? =
+        urlCache[videoId]?.takeIf { it.expiresAt - System.currentTimeMillis() > minLeftMs }
+
+    override suspend fun getStream(videoId: String, fresh: Boolean, avoid: Set<String>): com.waleve.player.domain.model.StreamLink? {
+        if (!fresh) {
+            cached(videoId)?.let { return it }
+            // A look-up for this song is already running (e.g. a prefetch): use its answer
+            inFlight[videoId]?.takeIf { it.isActive && avoid.isEmpty() }?.let { shared ->
+                shared.await()?.let { return it }
+            }
+        } else forget(videoId)
+        val job = bg.async {
+            try {
+                resolver.resolve(videoId, allowSlow = true, avoid = avoid)?.also { remember(videoId, it) }
+            } finally { inFlight.remove(videoId) }
+        }
+        if (avoid.isEmpty()) inFlight[videoId] = job
+        return job.await()
     }
 
     override fun prefetch(videoIds: List<String>) {
-        videoIds.distinct().take(6).forEach { id ->
-            val cached = urlCache[id]
-            if (cached != null && cached.second - System.currentTimeMillis() > 30 * 60_000) return@forEach
-            if (!prefetching.add(id)) return@forEach
-            bg.launch {
-                try { runCatching { ytMusic.audioUrl(id) }.getOrNull()?.let { remember(id, it) } }
-                finally { prefetching.remove(id) }
+        videoIds.distinct().take(4).forEach { id ->
+            if (cached(id, 30 * 60_000) != null) return@forEach
+            if (inFlight[id]?.isActive == true || !prefetching.add(id)) return@forEach
+            val job = bg.async {
+                try {
+                    // fast methods only — no heavy yt-dlp in the background
+                    resolver.resolve(id, allowSlow = false)?.also { remember(id, it) }
+                } finally { prefetching.remove(id); inFlight.remove(id) }
             }
+            inFlight[id] = job
         }
     }
 
-    override suspend fun getStreamUrl(videoId: String): String? {
-        // 1. Already looked up recently
-        urlCache[videoId]?.let { (u, exp) -> if (exp - System.currentTimeMillis() > 10 * 60_000) return u }
-        // 2. YouTube's own player (fast)
-        runCatching { ytMusic.audioUrl(videoId) }.getOrNull()?.let { remember(videoId, it); return it.first }
-        // 3. yt-dlp (slower, but handles everything)
-        return getStreamUrlSlow(videoId)
-    }
+    override suspend fun getStreamUrl(videoId: String): String? = getStream(videoId)?.url
 
-    override suspend fun getStreamUrlSlow(videoId: String): String? {
-        return try {
-            mediaExtractor.extractStreamUrl(videoId)?.also { remember(videoId, it to (System.currentTimeMillis() + 5 * 3_600_000L)) }
-        } catch (e: Exception) {
-            android.util.Log.e("StreamRepository", "getStreamUrl failed for $videoId", e)
-            null
-        }
-    }
+    override suspend fun getStreamUrlSlow(videoId: String): String? = getStream(videoId, fresh = true)?.url
+
+    override fun diagnose(videoId: String) = resolver.diagnose(videoId)
+
+    override fun recentResolutions() = resolver.recent()
 
     /**
      * Returns available audio quality options for the given video ID.
@@ -117,6 +144,12 @@ class StreamRepositoryImpl @Inject constructor(
     override fun forget(videoId: String) {
         urlCache.remove(videoId)
         linkPrefs.edit().remove(videoId).apply()
+    }
+
+    /** A link that refused to play: forget it and count it against the method that found it. */
+    override fun blame(videoId: String) {
+        urlCache[videoId]?.via?.let(resolver::blame)
+        forget(videoId)
     }
 
     override suspend fun downloadForPlayback(videoId: String): String? = mediaExtractor.downloadForPlayback(videoId)

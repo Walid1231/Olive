@@ -40,70 +40,63 @@ import java.util.concurrent.ConcurrentHashMap
  *  • No internet → keeps retrying calmly instead of failing.
  */
 @OptIn(UnstableApi::class)
-class StreamEngine(context: Context, private val repo: StreamRepository) {
+class StreamEngine(
+    context: Context,
+    private val repo: StreamRepository,
+    okHttp: okhttp3.OkHttpClient,
+    /** Headers for a link Olive handed out earlier (links stored inside songs). */
+    private val knownHeaders: (String) -> Map<String, String>?,
+) {
 
-    /** Link failures per video → decides fast link vs yt-dlp. */
+    /** Link failures per video → asks for a fresh link, skipping the method that failed. */
     private val failures = ConcurrentHashMap<String, Int>()
+    private val avoid = ConcurrentHashMap<String, MutableSet<String>>()
+    private val lastVia = ConcurrentHashMap<String, String>()
 
     fun failed(videoId: String) {
         failures.merge(videoId, 1, Int::plus)
-        repo.forget(videoId)
-        Log.w(TAG, "Link failed for $videoId (${failures[videoId]}×) — will fetch a new one")
+        lastVia[videoId]?.let { avoid.getOrPut(videoId) { ConcurrentHashMap.newKeySet() }.add(it) }
+        repo.blame(videoId)
+        Log.w(TAG, "Link failed for $videoId (${failures[videoId]}×, via ${lastVia[videoId]}) — getting another")
     }
 
-    fun worked(videoId: String) { failures.remove(videoId) }
+    fun worked(videoId: String) { failures.remove(videoId); avoid.remove(videoId) }
 
-    /** ytm://stream/<id> → playable googlevideo link (with the right User-Agent). */
+    /** ytm://stream/<id> → playable link (with the headers YouTube expects). */
     private fun resolve(spec: DataSpec): DataSpec {
         val uri = spec.uri
         if (uri.scheme == "ytm" && uri.host == "stream") {
             val id = uri.lastPathSegment?.takeIf { it.isNotBlank() } ?: throw IOException("Bad stream id")
             val tries = failures[id] ?: 0
-            val url = runBlocking(Dispatchers.IO) {
-                if (tries >= 2) repo.getStreamUrlSlow(id) else repo.getStreamUrl(id)
+            val link = runBlocking(Dispatchers.IO) {
+                repo.getStream(id, fresh = tries > 0, avoid = avoid[id]?.toSet().orEmpty())
             }
-            if (url == null) {
+            if (link == null) {
                 failed(id)
                 throw IOException("No stream link for $id")
             }
-            val real = Uri.parse(url)
+            lastVia[id] = link.via
             return spec.buildUpon()
-                .setUri(real)
+                .setUri(Uri.parse(link.url))
                 .setCustomData(id)
-                .setHttpRequestHeaders(spec.httpRequestHeaders + headersFor(real))
+                .setHttpRequestHeaders(spec.httpRequestHeaders + link.headers)
                 .build()
         }
         if (uri.host?.endsWith("googlevideo.com") == true) {
-            return spec.withAdditionalHeaders(headersFor(uri))
+            val h = knownHeaders(uri.toString()) ?: YouTubeHeaders.forClient(uri.getQueryParameter("c").orEmpty())
+            return spec.withAdditionalHeaders(h)
         }
         return spec
     }
 
-    private fun headersFor(u: Uri): Map<String, String> =
-        if (u.host?.endsWith("googlevideo.com") == true) YouTubeHeaders.forClient(u.getQueryParameter("c").orEmpty()) else emptyMap()
-
-    /** Tells the engine when a resolved link is refused, so the retry fetches a fresh one. */
-    private inner class ReportingDataSource(private val up: DataSource) : DataSource {
-        override fun addTransferListener(transferListener: TransferListener) = up.addTransferListener(transferListener)
-        override fun open(dataSpec: DataSpec): Long {
-            val id = dataSpec.customData as? String
-            try {
-                return up.open(dataSpec).also { if (id != null) worked(id) }
-            } catch (e: HttpDataSource.InvalidResponseCodeException) {
-                if (id != null) failed(id)
-                throw e
-            }
-        }
-        override fun read(buffer: ByteArray, offset: Int, length: Int) = up.read(buffer, offset, length)
-        override fun getUri(): Uri? = up.uri
-        override fun getResponseHeaders(): Map<String, List<String>> = up.responseHeaders
-        override fun close() = up.close()
-    }
-
-    private val http = DefaultHttpDataSource.Factory()
-        .setAllowCrossProtocolRedirects(true)
-        .setConnectTimeoutMs(10_000)
-        .setReadTimeoutMs(15_000)
+    // OkHttp (shared connections, IPv4 first) — connects to YouTube's servers faster than the default stack
+    private val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(
+        okHttp.newBuilder()
+            .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true).followSslRedirects(true)
+            .build(),
+    )
 
     private val plain = DefaultDataSource.Factory(context, http)
 

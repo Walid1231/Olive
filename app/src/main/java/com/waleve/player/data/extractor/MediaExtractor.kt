@@ -157,28 +157,78 @@ class MediaExtractor @Inject constructor(
     }
     @Volatile private var jsOptionSupported = true
 
+    /** yt-dlp keeps YouTube's player code + solved puzzles here, so later songs are much faster. */
+    private val ytdlpCache: String by lazy { java.io.File(context.filesDir, "yt-dlp-cache").apply { mkdirs() }.absolutePath }
+
+    /**
+     * Run yt-dlp for a YouTube link. First the "visionos" client (no PO token, no JavaScript —
+     * fast); if that fails, yt-dlp's own default clients (slower: they need JavaScript).
+     * Each way is tried once (an old bug ran every failing attempt twice).
+     */
     private fun <T> runYouTube(url: String, build: (YoutubeDLRequest) -> Unit, exec: (YoutubeDLRequest) -> T): T {
         var last: Exception? = null
-        for (vrClient in listOf(true, false)) {
-            repeat(2) {
+        for (client in listOf("visionos", null)) {
+            var tries = 0
+            while (tries < 2) {
+                tries++
                 val req = YoutubeDLRequest(url)
                 build(req)
+                req.addOption("--cache-dir", ytdlpCache)
+                req.addOption("--socket-timeout", "10")
                 if (jsOptionSupported && qjsPath != null) req.addOption("--js-runtimes", "quickjs:$qjsPath")
-                if (vrClient) req.addOption("--extractor-args", "youtube:player_client=android_vr")
+                if (client != null) req.addOption("--extractor-args", "youtube:player_client=$client")
                 try {
                     return exec(req)
                 } catch (e: Exception) {
                     last = e
+                    if (e is InterruptedException) throw e
                     val m = e.message.orEmpty()
-                    // An older yt-dlp that doesn't know the option: drop it and try again
+                    // An older yt-dlp that doesn't know the option: drop it and try once more
                     if (jsOptionSupported && m.contains("js-runtimes") && (m.contains("no such option") || m.contains("unrecognized"))) {
                         jsOptionSupported = false
-                    } else return@repeat
+                        continue
+                    }
+                    break
                 }
             }
-            if (last is InterruptedException || last is kotlinx.coroutines.CancellationException) break
         }
         throw last ?: Exception("YouTube extraction failed")
+    }
+
+    /**
+     * Stream link + the headers YouTube expects, via yt-dlp. Cancelling the coroutine stops
+     * the yt-dlp process (the fast methods usually win long before this finishes).
+     */
+    suspend fun extractStreamLink(videoId: String): Pair<String, Map<String, String>>? = withContext(Dispatchers.IO) {
+        initialize()
+        ensureUpdated()
+        val pid = "stream_${videoId}_${System.nanoTime()}"
+        try {
+            val out = kotlinx.coroutines.runInterruptible {
+                runYouTube("https://music.youtube.com/watch?v=$videoId", { r ->
+                    r.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                    r.addOption("--no-playlist")
+                    r.addOption("--print", "%(http_headers)j")
+                    r.addOption("--print", "%(url)s")
+                }) { YoutubeDL.getInstance().execute(it, pid).out }
+            }
+            val lines = out.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val url = lines.lastOrNull { it.startsWith("http") } ?: return@withContext null
+            val headers = lines.firstOrNull { it.startsWith("{") }?.let { j ->
+                runCatching {
+                    val o = org.json.JSONObject(j)
+                    o.keys().asSequence().associateWith { o.optString(it) }
+                }.getOrNull()
+            }.orEmpty()
+            url to headers
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("MediaExtractor", "extractStreamLink failed for $videoId: ${e.message?.take(200)}")
+            null
+        } finally {
+            runCatching { YoutubeDL.getInstance().destroyProcessById(pid) }
+        }
     }
 
     /**

@@ -17,6 +17,8 @@ class PlaybackService : MediaSessionService() {
     @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
     interface Deps {
         fun streamRepository(): com.waleve.player.domain.repository.StreamRepository
+        fun streamResolver(): com.waleve.player.data.remote.StreamResolver
+        fun okHttpClient(): okhttp3.OkHttpClient
     }
 
     private var mediaSession: MediaSession? = null
@@ -26,9 +28,9 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
 
         // Online songs: links fetched on demand, refreshed silently, cached (see StreamEngine)
-        val repo = dagger.hilt.android.EntryPointAccessors
-            .fromApplication(applicationContext, Deps::class.java).streamRepository()
-        val engine = StreamEngine(this, repo)
+        val deps = dagger.hilt.android.EntryPointAccessors.fromApplication(applicationContext, Deps::class.java)
+        val resolver = deps.streamResolver()
+        val engine = StreamEngine(this, deps.streamRepository(), deps.okHttpClient()) { url -> resolver.headersFor(url) }
 
         // Live Listen Together: a copy of the decoded audio goes to LiveAudioTap (idle unless live)
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
@@ -89,14 +91,17 @@ class PlaybackService : MediaSessionService() {
 
 /** The User-Agent each YouTube client uses; googlevideo checks it against the link's "c=". */
 object YouTubeHeaders {
-    const val VR_UA = "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+    const val VR_UA = "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
     private const val ANDROID_UA = "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
     private const val MUSIC_UA = "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14) gzip"
     private const val IOS_UA = "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
     private const val TV_UA = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
     private const val WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
+    private const val VISIONOS_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+
     fun forClient(c: String): Map<String, String> = when {
+        c.equals("VISIONOS", true) -> mapOf("User-Agent" to VISIONOS_UA)
         c.equals("ANDROID_VR", true) -> mapOf("User-Agent" to VR_UA)
         c.equals("ANDROID_MUSIC", true) -> mapOf("User-Agent" to MUSIC_UA)
         c.startsWith("ANDROID", true) -> mapOf("User-Agent" to ANDROID_UA)

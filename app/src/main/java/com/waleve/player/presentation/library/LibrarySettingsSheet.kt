@@ -1,5 +1,8 @@
 package com.waleve.player.presentation.library
 
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -96,7 +99,8 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
         shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 22.dp).navigationBarsPadding().padding(bottom = 18.dp),
+            Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(horizontal = 22.dp).navigationBarsPadding().padding(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -137,6 +141,9 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
                 GlassButton(if (checking) "Checking…" else "Check for updates", { updateVm.checkNow() }, Modifier.weight(1f), icon = Icons.Rounded.SystemUpdate, enabled = !checking, height = 46.dp)
                 GlassButton("Add widget", { com.waleve.player.widget.WidgetPin.request(ctx) }, Modifier.weight(1f), icon = Icons.Rounded.Widgets, height = 46.dp)
             }
+            var streamingCheck by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            GlassButton("Streaming check", { streamingCheck = true }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Speed, height = 46.dp)
+            if (streamingCheck) com.waleve.player.presentation.settings.StreamingCheckSheet(onDismiss = { streamingCheck = false })
         }
     }
 }

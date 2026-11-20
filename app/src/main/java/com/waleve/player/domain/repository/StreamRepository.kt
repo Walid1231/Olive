@@ -1,6 +1,9 @@
 package com.waleve.player.domain.repository
 
 import com.waleve.player.domain.model.SearchResult
+import com.waleve.player.domain.model.StreamAttempt
+import com.waleve.player.domain.model.StreamLink
+import com.waleve.player.domain.model.StreamResolution
 
 /**
  * Repository interface for searching YouTube Music and fetching stream URLs.
@@ -21,11 +24,26 @@ interface StreamRepository {
     /** yt-dlp only (used when the fast link didn't play). */
     suspend fun getStreamUrlSlow(videoId: String): String?
 
+    /**
+     * Playable link + headers. Several methods race; the first link that really answers wins.
+     * [avoid] skips methods whose link just failed for this song.
+     */
+    suspend fun getStream(videoId: String, fresh: Boolean = false, avoid: Set<String> = emptySet()): StreamLink?
+
+    /** Streaming check: try every method separately and report each result as it arrives. */
+    fun diagnose(videoId: String): kotlinx.coroutines.flow.Flow<StreamAttempt>
+
+    /** The last songs' link look-ups (newest first). */
+    fun recentResolutions(): List<StreamResolution>
+
     /** Last resort: save the audio to a small cache and return the file path. */
     suspend fun downloadForPlayback(videoId: String): String?
 
     /** Drop a cached link that stopped working. */
     fun forget(videoId: String)
+
+    /** A link that refused to play: forget it and count it against the method that found it. */
+    fun blame(videoId: String)
 
     /** Fetch links for songs the user is likely to tap next, so they start instantly. */
     fun prefetch(videoIds: List<String>)

@@ -354,18 +354,11 @@ fun GlassSegmented(options: List<SegmentOption>, selected: Int, onSelect: (Int) 
                     FitText(opt.label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f, fill = false))
                     opt.count?.takeIf { it > 0 }?.let { c ->
                         Spacer(Modifier.width(5.dp))
-                        Box(
-                            Modifier.heightIn(min = 18.dp).widthIn(min = 18.dp).clip(CircleShape)
-                                .background(if (on) Color.White.copy(alpha = 0.28f) else GlassAccent.copy(alpha = 0.16f))
-                                .padding(horizontal = 5.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                if (c > 99) "99+" else c.toString(),
-                                color = if (on) Color.White else GlassAccent,
-                                fontWeight = FontWeight.ExtraBold, fontSize = 10.5.sp, maxLines = 1, softWrap = false,
-                            )
-                        }
+                        CountBadge(
+                            c,
+                            color = if (on) Color.White.copy(alpha = 0.28f) else GlassAccent.copy(alpha = 0.16f),
+                            textColor = if (on) Color.White else GlassAccent,
+                        )
                     }
                 }
             }
@@ -449,6 +442,50 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
         Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
             Text(action, color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.springClick(onClick = onAction))
+        }
+    }
+}
+
+/**
+ * Small count bubble (inbox, tabs). Its size doesn't grow with the phone's font setting and the
+ * number sits exactly in the middle (no font padding), so it never looks clipped.
+ */
+@Composable
+fun CountBadge(
+    count: Int,
+    modifier: Modifier = Modifier,
+    color: Color = Color(0xFFE5486C),
+    textColor: Color = Color.White,
+    ring: Color? = null,
+) {
+    if (count <= 0) return
+    val fs = with(androidx.compose.ui.platform.LocalDensity.current) { 10.5.dp.toSp() }
+    val label = if (count > 99) "99+" else count.toString()
+    Box(
+        modifier
+            .then(if (ring != null) Modifier.clip(RoundedCornerShape(50)).background(ring).padding(2.dp) else Modifier),
+    ) {
+        Box(
+            Modifier.height(18.dp).widthIn(min = 18.dp).clip(RoundedCornerShape(50)).background(color)
+                .padding(horizontal = if (label.length > 1) 5.dp else 0.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                color = textColor,
+                fontSize = fs,
+                lineHeight = fs,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                softWrap = false,
+                style = androidx.compose.ui.text.TextStyle(
+                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                        alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                        trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both,
+                    ),
+                ),
+            )
         }
     }
 }

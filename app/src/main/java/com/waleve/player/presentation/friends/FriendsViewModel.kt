@@ -400,30 +400,20 @@ class FriendsViewModel @Inject constructor(
             )
         }
         val videoId = notif.videoId ?: return null
-        return try {
-            val streamUrl = streamRepository.getStreamUrl(videoId)
-            if (streamUrl != null) {
-                markNotificationRead(notif.notifId)
-                com.waleve.player.domain.model.Song(
-                    id = videoId.hashCode().toLong(),
-                    title = notif.songTitle ?: "Shared Song",
-                    artist = notif.artist ?: "Shared by ${notif.fromName}",
-                    album = "",
-                    albumArtUri = notif.thumbnailUrl,
-                    duration = notif.durationMs,
-                    path = streamUrl,
-                    source = "stream",
-                    videoId = videoId,
-                    mediaType = notif.mediaType,
-                )
-            } else {
-                _events.emit(FriendsUiEvent.Error("Could not stream this song"))
-                null
-            }
-        } catch (e: Exception) {
-            _events.emit(FriendsUiEvent.Error("Stream failed: ${e.message}"))
-            null
-        }
+        // The player fetches the link itself (fast methods race; retries if a link fails)
+        markNotificationRead(notif.notifId)
+        return com.waleve.player.domain.model.Song(
+            id = videoId.hashCode().toLong(),
+            title = notif.songTitle ?: "Shared Song",
+            artist = notif.artist ?: "Shared by ${notif.fromName}",
+            album = "",
+            albumArtUri = notif.thumbnailUrl,
+            duration = notif.durationMs,
+            path = "ytm://stream/$videoId",
+            source = "stream",
+            videoId = videoId,
+            mediaType = notif.mediaType,
+        )
     }
 
     private fun updateDownloadProgress(

@@ -213,6 +213,7 @@ class PlaybackController @Inject constructor(
                 updateState()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                mediaController?.currentMediaItemIndex?.let { prefetchAfter(it) }
                 // Sleep mode "end of track": the previous item just finished → stop here
                 if (_sleepEndOfTrack.value && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                         reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)) {
@@ -393,7 +394,17 @@ class PlaybackController @Inject constructor(
             mediaController?.setMediaItems(songs.map { it.toMediaItem() }, start, startPos)
             mediaController?.prepare()
             if (playWhenReady) mediaController?.play() else mediaController?.pause()
+            // Get links for the next few songs now, so skipping is instant
+            prefetchAfter(start)
         }
+    }
+
+    /** Links for the songs after [index] in the queue (fast methods only, in the background). */
+    private fun prefetchAfter(index: Int) {
+        val ids = currentQueue.drop(index + 1).take(3).mapNotNull { s ->
+            s.videoId ?: s.path.takeIf { it.startsWith("ytm://stream/") }?.substringAfter("ytm://stream/")
+        }
+        if (ids.isNotEmpty()) streamRepository.prefetch(ids)
     }
 
     fun updateSongFavoriteStatus(songId: Long, isFavorite: Boolean) {
