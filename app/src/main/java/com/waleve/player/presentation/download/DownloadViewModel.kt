@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import com.waleve.player.data.mapper.toDomain
 import javax.inject.Inject
 import com.waleve.player.domain.usecase.ScanMusicUseCase
 
@@ -40,7 +43,37 @@ class DownloadViewModel @Inject constructor(
     private val extractor: MediaExtractor,
     private val scanMusicUseCase: ScanMusicUseCase,
     private val songDao: SongDao,
+    private val player: com.waleve.player.service.PlaybackController,
 ) : ViewModel() {
+
+    /** Last few downloads, shown on the empty page. */
+    val recent: StateFlow<List<com.waleve.player.domain.model.Song>> = songDao.getRecentDownloads()
+        .map { list -> list.map { it.toDomain() } }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun playRecent(index: Int) {
+        val list = recent.value
+        if (list.isNotEmpty()) player.setQueue(list, index.coerceIn(0, list.lastIndex))
+    }
+
+    init {
+        // A link shared from another app: fill it in and fetch the formats right away
+        viewModelScope.launch {
+            com.waleve.player.data.download.SharedLinkInbox.pending.collect { link ->
+                if (link != null) {
+                    com.waleve.player.data.download.SharedLinkInbox.take()
+                    reset(); updateUrl(link); extractInfo()
+                }
+            }
+        }
+    }
+
+    /** Paste + go in one tap. */
+    fun pasteAndGo(text: String?) {
+        val link = com.waleve.player.data.download.SharedLinkInbox.firstUrlIn(text) ?: return
+        updateUrl(link)
+        extractInfo()
+    }
 
     private val _uiState = MutableStateFlow<DownloadUiState>(DownloadUiState.Idle)
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()

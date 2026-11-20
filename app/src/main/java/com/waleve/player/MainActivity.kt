@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleShare(intent)
         enableEdgeToEdge()
         requestRequiredPermissions()
         together.start()
@@ -71,6 +72,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WaLeveAppContent()
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
+    }
+
+    /** A link shared to Olive → open the Download page with it. */
+    private fun handleShare(intent: android.content.Intent?) {
+        if (intent?.action == android.content.Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
+            com.waleve.player.data.download.SharedLinkInbox.offer(intent.getStringExtra(android.content.Intent.EXTRA_TEXT))
         }
     }
 

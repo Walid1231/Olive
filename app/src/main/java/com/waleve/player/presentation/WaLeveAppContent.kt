@@ -45,6 +45,17 @@ fun WaLeveAppContent() {
       val bgState by bgPlayer.playerState.collectAsStateWithLifecycle()
       com.waleve.player.presentation.components.GlassBackground(artwork = bgState.shownSong?.albumArtUri) {
         val navController = rememberNavController()
+        // "Share → Olive": jump to the Download page
+        val sharedLink by com.waleve.player.data.download.SharedLinkInbox.pending.collectAsStateWithLifecycle()
+        androidx.compose.runtime.LaunchedEffect(sharedLink) {
+            if (sharedLink != null) runCatching {
+                navController.navigate(com.waleve.player.presentation.navigation.DownloadRoute) {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
         val playerViewModel: PlayerViewModel = hiltViewModel()
         val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()
         val sleepTimerRemaining by playerViewModel.sleepTimerRemaining.collectAsStateWithLifecycle()

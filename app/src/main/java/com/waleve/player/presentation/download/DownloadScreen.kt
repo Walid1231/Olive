@@ -2,6 +2,19 @@ package com.waleve.player.presentation.download
 
 import androidx.compose.foundation.layout.statusBarsPadding
 import com.waleve.player.presentation.components.springClick
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.IosShare
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentPaste
+import com.waleve.player.presentation.components.GlassGradientH
+import com.waleve.player.presentation.components.glass
+import com.waleve.player.presentation.theme.GlassAccent
+import com.waleve.player.presentation.theme.GlassMuted
+import com.waleve.player.presentation.theme.GlassSub
+import com.waleve.player.presentation.theme.GlassInk
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -98,8 +111,9 @@ fun DownloadScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val url by viewModel.url.collectAsStateWithLifecycle()
+    val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val gc = LocalGhibliColors.current
-    val isNight = false   // glass in both modes: let the app background show through
 
     val isActive = uiState is DownloadUiState.Downloading || uiState is DownloadUiState.Done
 
@@ -107,179 +121,28 @@ fun DownloadScreen(
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .background(
-                if (isNight)
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.00f to Color(0xFF060D1E),
-                            0.40f to Color(0xFF0A1628),
-                            1.00f to Color(0xFF060D1E),
-                        )
-                    )
-                else
-                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
-            )
             .verticalScroll(rememberScrollState()),
     ) {
-        // -- Premium Header --
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    if (isNight)
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color(0xFF060D1E),
-                                0.75f to Color(0xFF060D1E),
-                                1.0f to Color.Transparent,
-                            )
-                        )
-                    else
-                        androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
-                )
-                .padding(horizontal = 20.dp)
-                .padding(top = 6.dp, bottom = 8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            androidx.compose.ui.graphics.Brush.linearGradient(
-                                listOf(gc.accent, gc.accentLight)
-                            )
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.CloudDownload, null, tint = Color.White, modifier = Modifier.size(24.dp))
-                }
-                Column {
-                    Text(
-                        "Download",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = gc.textPrimary,
-                    )
-                    Text(
-                        "YouTube, SoundCloud & more",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = gc.textMuted,
-                    )
-                }
-            }
+        // ── Header: just words ──
+        Column(Modifier.padding(horizontal = 22.dp).padding(top = 10.dp, bottom = 16.dp)) {
+            Text("Download", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 30.sp)
+            Text("Paste a link, or share one to Olive from any app", color = GlassSub, fontSize = 13.5.sp)
         }
 
-        // -- Glass Input Card (hidden during active download/done) --
+        // ── One smart link bar (hidden while downloading) ──
         AnimatedVisibility(
             visible = !isActive,
             enter = expandVertically() + fadeIn(),
-            exit  = shrinkVertically() + fadeOut(),
+            exit = shrinkVertically() + fadeOut(),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        if (isNight) Color.White.copy(alpha = 0.05f)
-                        else com.waleve.player.presentation.theme.GlassFill.copy(alpha = 0.75f)
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = gc.accent.copy(alpha = if (isNight) 0.20f else 0.25f),
-                        shape = RoundedCornerShape(20.dp),
-                    ),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(gc.accent),
-                        )
-                        Text(
-                            "Paste a link",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = gc.accent,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = viewModel::updateUrl,
-                        placeholder = { Text("https://youtu.be/...", color = gc.textMuted) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Link, null,
-                                tint = if (url.isNotBlank()) gc.accent else gc.textMuted,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor        = gc.accent,
-                            unfocusedBorderColor      = gc.accent.copy(alpha = 0.25f),
-                            cursorColor               = gc.accent,
-                            focusedTextColor          = gc.textPrimary,
-                            unfocusedTextColor        = gc.textPrimary,
-                            focusedContainerColor     = Color.Transparent,
-                            unfocusedContainerColor   = Color.Transparent,
-                            focusedLabelColor         = gc.accent,
-                            unfocusedLabelColor       = gc.textMuted,
-                            focusedPlaceholderColor   = gc.textMuted,
-                            unfocusedPlaceholderColor = gc.textMuted,
-                        ),
-                        textStyle = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, color = gc.textPrimary, fontSize = 14.sp),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                    )
-
-                    val isExtracting = uiState is DownloadUiState.Loading
-                    Box(
-                        modifier = Modifier.springClick(enabled = url.isNotBlank() && !isExtracting) { viewModel.extractInfo() }
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (url.isNotBlank() && !isExtracting)
-                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        listOf(gc.accent, gc.accentLight, gc.accent)
-                                    )
-                                else
-                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        listOf(gc.accent.copy(alpha = 0.4f), gc.accent.copy(alpha = 0.4f))
-                                    )
-                            )
-                            ,
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (isExtracting) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
-                                Text("Extracting info...", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                            } else {
-                                Icon(Icons.Filled.CloudDownload, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                Text("Download", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = 0.5.sp)
-                            }
-                        }
-                    }
-                }
-            }
+            LinkBar(
+                url = url,
+                busy = uiState is DownloadUiState.Loading,
+                onChange = viewModel::updateUrl,
+                onPaste = { viewModel.pasteAndGo(clipboard.getText()?.text) },
+                onGo = viewModel::extractInfo,
+                onClear = viewModel::reset,
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -287,7 +150,7 @@ fun DownloadScreen(
         // -- State Content --
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             when (val state = uiState) {
-                is DownloadUiState.Idle -> { IdleEmptyState(gc = gc) }
+                is DownloadUiState.Idle -> { IdleState(recent = recent, onPlay = viewModel::playRecent) }
                 is DownloadUiState.Loading -> { /* handled in button */ }
                 is DownloadUiState.Ready -> {
                     FormatSelectionContent(info = state.info, onDownload = { f, ab -> viewModel.download(f, ab) })
@@ -319,65 +182,197 @@ fun DownloadScreen(
     }
 }
 
-// -- Idle Empty State --
-@Composable
-private fun IdleEmptyState(gc: GhibliColors) {
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "idleFloat")
-    val floatOffset by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = -10f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(2000, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
-        ), label = "float",
-    )
+// ── Link bar ─────────────────────────────────────────────────────────────────
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.offset(y = floatOffset.dp)) {
-            Box(
-                modifier = Modifier.size(100.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(gc.accent.copy(alpha = 0.07f))
-            )
-            Box(
-                modifier = Modifier.size(72.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.linearGradient(
-                            listOf(gc.accent.copy(alpha = 0.20f), gc.accentLight.copy(alpha = 0.12f))
-                        )
-                    )
-                    .border(1.dp, gc.accent.copy(alpha = 0.30f), androidx.compose.foundation.shape.CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.CloudDownload, null, tint = gc.accent, modifier = Modifier.size(34.dp))
+/** What kind of link this is, in plain words ("YouTube playlist"), or null if it isn't one. */
+private fun linkSource(url: String): String? {
+    val u = url.trim()
+    if (!u.startsWith("http://") && !u.startsWith("https://")) return null
+    val host = runCatching { java.net.URI(u).host?.removePrefix("www.")?.removePrefix("m.") }.getOrNull() ?: return null
+    val playlist = "list=" in u && "watch?v=" !in u || "/playlist" in u || "/sets/" in u
+    val name = when {
+        host == "music.youtube.com" -> "YouTube Music"
+        host.endsWith("youtube.com") || host == "youtu.be" -> "YouTube"
+        host.endsWith("soundcloud.com") -> "SoundCloud"
+        host.endsWith("instagram.com") -> "Instagram"
+        host.endsWith("facebook.com") || host == "fb.watch" -> "Facebook"
+        host.endsWith("tiktok.com") -> "TikTok"
+        host == "x.com" || host.endsWith("twitter.com") -> "X"
+        host.endsWith("vimeo.com") -> "Vimeo"
+        host.endsWith("bandcamp.com") -> "Bandcamp"
+        else -> host
+    }
+    return if (playlist) "$name playlist" else "$name link"
+}
+
+@Composable
+private fun LinkBar(
+    url: String,
+    busy: Boolean,
+    onChange: (String) -> Unit,
+    onPaste: () -> Unit,
+    onGo: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val source = remember(url) { linkSource(url) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(60.dp)
+                .glass(RoundedCornerShape(30.dp), alpha = 0.82f)
+                .padding(start = 18.dp, end = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Link, null, tint = if (url.isBlank()) GlassMuted else GlassAccent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (url.isEmpty()) Text("Paste a link", color = GlassMuted, fontSize = 15.5.sp)
+                androidx.compose.foundation.text.BasicTextField(
+                    value = url,
+                    onValueChange = onChange,
+                    singleLine = true,
+                    enabled = !busy,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = GlassInk, fontSize = 15.5.sp,
+                        fontFamily = com.waleve.player.presentation.theme.OutfitFamily,
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(GlassAccent),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onGo = { focus.clearFocus(); if (url.isNotBlank()) onGo() },
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            androidx.compose.animation.AnimatedContent(
+                targetState = when { busy -> 2; url.isBlank() -> 0; else -> 1 },
+                transitionSpec = {
+                    (fadeIn(androidx.compose.animation.core.tween(180)) + androidx.compose.animation.scaleIn(initialScale = 0.85f))
+                        .togetherWith(fadeOut(androidx.compose.animation.core.tween(120)))
+                },
+                label = "linkAction",
+            ) { mode ->
+                when (mode) {
+                    0 -> Row(
+                        Modifier.springClick(onClick = onPaste).height(46.dp).clip(RoundedCornerShape(23.dp))
+                            .background(GlassGradientH).padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.ContentPaste, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Paste", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                    }
+                    1 -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(34.dp).clip(CircleShape).clickable(onClick = onClear),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Rounded.Close, "Clear", tint = GlassMuted, modifier = Modifier.size(18.dp)) }
+                        Spacer(Modifier.width(4.dp))
+                        Box(
+                            Modifier.springClick { focus.clearFocus(); onGo() }.size(46.dp).clip(CircleShape).background(GlassGradientH),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Get formats", tint = Color.White, modifier = Modifier.size(22.dp)) }
+                    }
+                    else -> Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(22.dp), color = GlassAccent, strokeWidth = 2.4.dp)
+                    }
+                }
             }
         }
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Ready to download", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = gc.textPrimary)
-            Text("Paste any YouTube or video link above", style = MaterialTheme.typography.bodySmall, color = gc.textMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("🎵 Audio", "🎞️ Video", "📋 Playlist").forEach { label ->
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = gc.accent.copy(alpha = 0.10f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, gc.accent.copy(alpha = 0.20f)),
-                ) {
-                    Text(label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = gc.accent, fontWeight = FontWeight.Medium)
-                }
+        // What Olive recognised
+        AnimatedVisibility(visible = source != null || busy, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+            Row(Modifier.padding(start = 20.dp, top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(GlassAccent))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (busy) "Reading ${source ?: "the link"}…" else source.orEmpty(),
+                    color = GlassSub, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
 }
 
+// ── Empty page: how it works + recent downloads ──────────────────────────────
 
+@Composable
+private fun IdleState(recent: List<com.waleve.player.domain.model.Song>, onPlay: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        // Three steps, one line each — no clutter
+        Row(
+            Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.6f, elevation = 0.dp).padding(vertical = 16.dp, horizontal = 8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            listOf(
+                Icons.Rounded.ContentPaste to "Paste a link",
+                Icons.Rounded.Tune to "Pick the quality",
+                Icons.Rounded.LibraryMusic to "It's in your library",
+            ).forEachIndexed { i, (icon, label) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(42.dp).clip(CircleShape).background(GlassAccent.copy(alpha = 0.13f)),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(icon, null, tint = GlassAccent, modifier = Modifier.size(20.dp)) }
+                    Spacer(Modifier.height(8.dp))
+                    Text("${i + 1}", color = GlassMuted, fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        label, color = GlassInk, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, lineHeight = 15.sp,
+                    )
+                }
+            }
+        }
 
+        // Share tip
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(GlassAccent.copy(alpha = 0.09f))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.IosShare, null, tint = GlassAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Quicker: in YouTube or your browser, tap Share → Olive. The formats open right away.",
+                color = GlassSub, fontSize = 12.5.sp, lineHeight = 16.sp,
+            )
+        }
+
+        if (recent.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "RECENT DOWNLOADS", color = GlassSub, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp,
+                    letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 6.dp, bottom = 2.dp),
+                )
+                recent.forEachIndexed { i, song ->
+                    Row(
+                        Modifier.springClick { onPlay(i) }.fillMaxWidth()
+                            .glass(RoundedCornerShape(18.dp), alpha = 0.6f, elevation = 0.dp)
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        com.waleve.player.presentation.components.Artwork(
+                            song.albumArtUri, Modifier.size(48.dp), corner = 12.dp, seed = song.title.hashCode(),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(song.title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOf(song.artist.takeIf { it.isNotBlank() && it != "<unknown>" }, if (song.isAudiobook) "Audiobook" else null)
+                                    .filterNotNull().joinToString(" · ").ifBlank { "Downloaded" },
+                                color = GlassSub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(Icons.Rounded.PlayArrow, "Play", tint = GlassAccent, modifier = Modifier.padding(horizontal = 8.dp).size(24.dp))
+                    }
+                }
+            }
+        }
+    }
+}
 
 // ── Format Selection (Two-Tiered) ────────────────────────────────────────────
 
