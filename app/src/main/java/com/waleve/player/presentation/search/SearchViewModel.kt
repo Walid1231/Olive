@@ -168,6 +168,8 @@ class SearchViewModel @Inject constructor(
             try {
                 val results = streamRepository.searchSongs(query)
                 _searchResults.value = results
+                // Get links for the top results now, so tapping one starts instantly
+                streamRepository.prefetch(results.map { it.videoId }.take(4))
             } catch (e: Exception) {
                 val message = when {
                     e is java.net.UnknownHostException || e.message?.contains("Unable to resolve host") == true ->

@@ -27,6 +27,9 @@ interface StreamRepository {
     /** Drop a cached link that stopped working. */
     fun forget(videoId: String)
 
+    /** Fetch links for songs the user is likely to tap next, so they start instantly. */
+    fun prefetch(videoIds: List<String>)
+
     /**
      * Get available audio quality options for a video.
      * Returns a list of pairs: (qualityLabel, streamUrl).

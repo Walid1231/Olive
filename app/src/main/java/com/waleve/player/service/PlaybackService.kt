@@ -13,26 +13,22 @@ import com.waleve.player.MainActivity
 
 class PlaybackService : MediaSessionService() {
 
+    @dagger.hilt.EntryPoint
+    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+    interface Deps {
+        fun streamRepository(): com.waleve.player.domain.repository.StreamRepository
+    }
+
     private var mediaSession: MediaSession? = null
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
 
-        // YouTube audio links only work when the request says it comes from the same YouTube
-        // app that asked for the link (the link's "c=" tells which). Add that User-Agent.
-        val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-        val upstream = androidx.media3.datasource.DefaultDataSource.Factory(this, http)
-        val youtubeAware = androidx.media3.datasource.ResolvingDataSource.Factory(upstream) { spec ->
-            val uri = spec.uri
-            if (uri.host?.endsWith("googlevideo.com") == true) {
-                val client = uri.getQueryParameter("c").orEmpty()
-                spec.withAdditionalHeaders(YouTubeHeaders.forClient(client))
-            } else spec
-        }
+        // Online songs: links fetched on demand, refreshed silently, cached (see StreamEngine)
+        val repo = dagger.hilt.android.EntryPointAccessors
+            .fromApplication(applicationContext, Deps::class.java).streamRepository()
+        val engine = StreamEngine(this, repo)
 
         // Live Listen Together: a copy of the decoded audio goes to LiveAudioTap (idle unless live)
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
@@ -49,7 +45,11 @@ class PlaybackService : MediaSessionService() {
         }
 
         val player = ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(youtubeAware))
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(engine.dataSourceFactory)
+                    .setLoadErrorHandlingPolicy(engine.loadErrorPolicy)
+            )
+            .setLoadControl(engine.loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)

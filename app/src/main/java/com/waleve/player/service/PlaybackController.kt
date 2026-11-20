@@ -161,35 +161,41 @@ class PlaybackController @Inject constructor(
                 val c = mediaController ?: return
                 val song = c.currentMediaItem?.mediaId?.let { songMap[it] }
                 val vid = song?.videoId
-                val attempt = vid?.let { attempts[it] ?: 0 } ?: 99
-                android.util.Log.e("PlaybackController", "Play error (${error.errorCodeName}) for ${song?.title}, attempt $attempt", error)
-                if (song == null || vid == null || attempt >= 2) {
-                    setPending(null)
-                    _messages.tryEmit("Couldn't play “${song?.title ?: "this song"}” (${error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')})")
-                    return
-                }
-                attempts[vid] = attempt + 1
                 val idx = c.currentMediaItemIndex
                 val pos = c.currentPosition
-                setPending(song)
-                scope.launch {
-                    streamRepository.forget(vid)
-                    val path = if (attempt == 0) {
-                        // 2nd try: a link from yt-dlp
-                        streamRepository.getStreamUrlSlow(vid)
-                    } else {
-                        // 3rd try: save the audio and play the file
-                        _messages.tryEmit("Getting “${song.title}” ready…")
-                        streamRepository.downloadForPlayback(vid)
+                android.util.Log.e("PlaybackController", "Play error (${error.errorCodeName}) for ${song?.title}", error)
+
+                // No internet: wait calmly and continue when it's back
+                if (StreamEngine.isOffline(error) || error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+                    setPending(song)
+                    _messages.tryEmit("No internet — Olive will continue when you're back online")
+                    scope.launch {
+                        waitForInternet()
+                        mediaController?.prepare(); mediaController?.play()
                     }
-                    if (path == null) { setPending(null); _messages.tryEmit("Couldn't play “${song.title}”"); return@launch }
-                    val fixed = song.copy(path = path)
-                    songMap[fixed.id.toString()] = fixed
-                    mediaController?.replaceMediaItem(idx, fixed.toMediaItem())
-                    mediaController?.seekTo(idx, pos)
-                    mediaController?.prepare()
-                    mediaController?.play()
+                    return
                 }
+
+                val attempt = vid?.let { attempts[it] ?: 0 } ?: 99
+                if (song != null && vid != null && attempt == 0) {
+                    // Last resort for this song: save the audio with yt-dlp and play the file
+                    attempts[vid] = 1
+                    setPending(song)
+                    scope.launch {
+                        streamRepository.forget(vid)
+                        val path = streamRepository.downloadForPlayback(vid)
+                        if (path != null) {
+                            val fixed = song.copy(path = path)
+                            songMap[fixed.id.toString()] = fixed
+                            mediaController?.replaceMediaItem(idx, fixed.toMediaItem())
+                            mediaController?.seekTo(idx, pos)
+                            mediaController?.prepare(); mediaController?.play()
+                        } else skipBroken(song)
+                    }
+                    return
+                }
+                skipBroken(song)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -342,6 +348,23 @@ class PlaybackController @Inject constructor(
         )
         .build()
 
+    /** A song that really can't be played: move on to the next one instead of stopping. */
+    private fun skipBroken(song: Song?) {
+        setPending(null)
+        val c = mediaController ?: return
+        val hasNext = c.hasNextMediaItem()
+        _messages.tryEmit(if (hasNext) "Skipped “${song?.title ?: "a song"}” — it isn't available right now" else "“${song?.title ?: "This song"}” isn't available right now")
+        if (hasNext) { c.seekToNextMediaItem(); c.prepare(); c.play() }
+    }
+
+    /** Suspends until the phone has a working internet connection. */
+    private suspend fun waitForInternet() {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        fun online() = cm.getNetworkCapabilities(cm.activeNetwork)
+            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        while (!online()) kotlinx.coroutines.delay(2_000)
+    }
+
     /** ytm://stream/<videoId> → real stream URL. Null when the stream can't be found. */
     private suspend fun resolveStream(song: Song): Song? {
         if (!song.path.startsWith("ytm://stream/")) return song
@@ -363,58 +386,13 @@ class PlaybackController @Inject constructor(
         if (songs[start].path.startsWith("ytm://") || songs[start].path.startsWith("http")) setPending(songs[start])
 
         queueJob = scope.launch {
-            if (songs.none { it.path.startsWith("ytm://stream/") }) {
-                // Everything is already playable (local files / direct URLs)
-                songs.forEach { songMap[it.id.toString()] = it }
-                val startPos = startPositionMs ?: savedPosition(songs[start])
-                mediaController?.setMediaItems(songs.map { it.toMediaItem() }, start, startPos)
-                mediaController?.prepare()
-                if (playWhenReady) mediaController?.play() else mediaController?.pause()
-                return@launch
-            }
-
-            // Online queue: start the chosen song right away, resolve the others in the background
-            var firstIdx = start
-            var first: Song? = null
-            while (firstIdx < songs.size && first == null) {
-                first = resolveStream(songs[firstIdx])
-                if (first == null) {
-                    _messages.tryEmit("Couldn't play “${songs[firstIdx].title}” — trying the next one")
-                    firstIdx++
-                }
-            }
-            if (first == null) {
-                setPending(null)
-                _messages.tryEmit("YouTube didn't give us these songs right now. Check your internet and try again in a minute.")
-                return@launch
-            }
-            setPending(first)
-            val ordered = mutableListOf(first)
-            songMap[first.id.toString()] = first
-            currentQueue = ordered.toList()
-            val startPos = startPositionMs ?: savedPosition(first)
-            mediaController?.setMediaItems(listOf(first.toMediaItem()), 0, startPos)
+            // Online songs stay as ytm://stream/<id>: the player fetches each link when it needs
+            // it (the next song's link is fetched while this one plays), so this is instant.
+            songs.forEach { songMap[it.id.toString()] = it }
+            val startPos = startPositionMs ?: savedPosition(songs[start])
+            mediaController?.setMediaItems(songs.map { it.toMediaItem() }, start, startPos)
             mediaController?.prepare()
             if (playWhenReady) mediaController?.play() else mediaController?.pause()
-
-            for (i in firstIdx + 1 until songs.size) {
-                val r = resolveStream(songs[i]) ?: continue
-                songMap[r.id.toString()] = r
-                mediaController?.addMediaItem(r.toMediaItem())
-                ordered.add(r)
-                currentQueue = ordered.toList()
-                updateState()
-            }
-            var insertAt = 0
-            for (i in 0 until start) {
-                val r = resolveStream(songs[i]) ?: continue
-                songMap[r.id.toString()] = r
-                mediaController?.addMediaItem(insertAt, r.toMediaItem())
-                ordered.add(insertAt, r)
-                insertAt++
-                currentQueue = ordered.toList()
-                updateState()
-            }
         }
     }
 
