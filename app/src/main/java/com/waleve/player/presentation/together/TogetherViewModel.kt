@@ -56,6 +56,8 @@ class TogetherViewModel @Inject constructor(
     fun setChatOpen(open: Boolean) = together.setChatOpen(open)
     fun send(text: String) { viewModelScope.launch { together.sendChat(text).onFailure { _error.value = it.message } } }
     fun setOpenControl(on: Boolean) { viewModelScope.launch { together.setOpenControl(on) } }
+    val liveState = together.liveState
+    fun setLive(on: Boolean) = run { together.setLive(on) }
     fun guestControl(type: String) = together.guestControl(type)
 
     fun start(friendUids: List<String>, openControl: Boolean = false) = run { together.startSession(friendUids, openControl) }

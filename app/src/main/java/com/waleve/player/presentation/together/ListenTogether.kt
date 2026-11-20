@@ -158,6 +158,11 @@ fun ListenTogetherSheet(onDismiss: () -> Unit, vm: TogetherViewModel = hiltViewM
     var inviting by remember { mutableStateOf(false) }
     var openControl by remember { mutableStateOf(false) }
     val chat by vm.chat.collectAsStateWithLifecycle()
+    val liveState by vm.liveState.collectAsStateWithLifecycle()
+    val micPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) vm.setLive(true) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     TogetherToasts(vm)
     androidx.compose.runtime.DisposableEffect(Unit) {
         vm.setChatOpen(true)
@@ -217,6 +222,24 @@ fun ListenTogetherSheet(onDismiss: () -> Unit, vm: TogetherViewModel = hiltViewM
                             Text("Waiting for ${waiting.size} friend${if (waiting.size == 1) "" else "s"} to join", color = GlassMuted, fontSize = 12.sp)
                         }
                     }
+                    val liveSub = when (val ls = liveState) {
+                        is com.waleve.player.service.live.LiveStreamer.State.Connecting -> "Connecting…"
+                        is com.waleve.player.service.live.LiveStreamer.State.Live -> "On air · ${ls.listeners} listening · no downloads, perfect sync"
+                        is com.waleve.player.service.live.LiveStreamer.State.Failed -> ls.message
+                        else -> "Friends hear exactly what you play — instantly, local files too"
+                    }
+                    ToggleRow("Live stream", liveSub, h.live) { on ->
+                        if (!on) vm.setLive(false)
+                        else if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                            android.content.pm.PackageManager.PERMISSION_GRANTED) vm.setLive(true)
+                        else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                    if (h.live) {
+                        Text(
+                            "Android shows the mic dot while you're live — Olive sends only your music, never your voice.",
+                            color = GlassMuted, fontSize = 11.5.sp, modifier = Modifier.padding(horizontal = 6.dp),
+                        )
+                    }
                     ToggleRow("Everyone can control", "Friends can play, pause, skip and pick songs for all", h.openControl) { vm.setOpenControl(it) }
                     ChatPanel(chat, vm.myUid, vm::send)
                     AnimatedVisibility(inviting, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
@@ -234,7 +257,19 @@ fun ListenTogetherSheet(onDismiss: () -> Unit, vm: TogetherViewModel = hiltViewM
                 // ── I'm a guest ──
                 g != null -> {
                     Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp), alpha = 0.9f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Overline("Listening with ${g.hostName}")
+                        Overline(if (g.live) "Live with ${g.hostName}" else "Listening with ${g.hostName}")
+                        if (g.live) {
+                            val ls = liveState
+                            Text(
+                                when (ls) {
+                                    is com.waleve.player.service.live.LiveStreamer.State.Live -> "● On air — you hear ${g.hostName}'s phone live"
+                                    is com.waleve.player.service.live.LiveStreamer.State.Failed -> ls.message
+                                    else -> "Tuning in…"
+                                },
+                                color = if (ls is com.waleve.player.service.live.LiveStreamer.State.Live) GlassAccent else GlassSub,
+                                fontWeight = FontWeight.Bold, fontSize = 12.5.sp,
+                            )
+                        }
                         g.track?.let { t ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Artwork(t.artUrl, Modifier.size(52.dp), corner = 12.dp, seed = t.title.hashCode())

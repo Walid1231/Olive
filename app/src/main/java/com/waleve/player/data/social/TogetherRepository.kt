@@ -61,6 +61,7 @@ class TogetherRepository @Inject constructor(
     private val player: PlaybackController,
     private val resolver: RemoteMediaResolver,
     private val chatStore: ChatStore,
+    private val live: com.waleve.player.service.live.LiveStreamer,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs by lazy { context.getSharedPreferences("together", Context.MODE_PRIVATE) }
@@ -194,6 +195,7 @@ class TogetherRepository @Inject constructor(
             updatedAt = doc.getLong("updatedAt") ?: 0L,
             openControl = doc.getBoolean("openControl") ?: false,
             startedAt = doc.getLong("startedAt") ?: 0L,
+            live = doc.getBoolean("live") ?: false,
         )
     }
 
@@ -246,6 +248,23 @@ class TogetherRepository @Inject constructor(
         sendInvites(me, name, avatar, friendUids)
         runHost(me)
         attachChat(me, now, name)
+    }
+
+    /** Live stream state (host or guest). */
+    val liveState: StateFlow<com.waleve.player.service.live.LiveStreamer.State> = live.state
+
+    /** Host: stream what I play live to everyone (instant, in sync, local files too). */
+    suspend fun setLive(on: Boolean): Result<Unit> = runCatching {
+        val me = uid ?: error("Please sign in first")
+        if (_hosting.value == null) error("Start a session first")
+        if (on) {
+            live.startHost(me).getOrThrow()
+            sessions.document(me).update(mapOf("live" to true, "updatedAt" to System.currentTimeMillis())).await()
+            say("You're live — friends hear exactly what you play")
+        } else {
+            runCatching { sessions.document(me).update(mapOf("live" to false, "updatedAt" to System.currentTimeMillis())).await() }
+            live.stop()
+        }
     }
 
     /** Host: let guests control playback (and pick songs) too — or not. */
@@ -389,6 +408,7 @@ class TogetherRepository @Inject constructor(
 
     suspend fun endSession() {
         val me = uid ?: return
+        if (live.isLive || live.state.value !is com.waleve.player.service.live.LiveStreamer.State.Off) live.stop()
         hostJob?.cancel(); hostJob = null
         hostListener?.remove(); hostListener = null
         _hosting.value = null
@@ -435,6 +455,25 @@ class TogetherRepository @Inject constructor(
         var expectedSongId: Long? = null
         var loadedAt = 0L
         var warnedOffline = false
+        var listeningLive = false
+
+        fun followLive(s: ListenSession) {
+            if (s.live && !listeningLive) {
+                listeningLive = true
+                player.remotePause()
+                say("${s.hostName} is live — tuning in…")
+                scope.launch {
+                    live.startGuest(hostUid).onFailure {
+                        say("Couldn't join the live stream: ${it.message}")
+                        listeningLive = false
+                    }
+                }
+            } else if (!s.live && listeningLive) {
+                listeningLive = false
+                currentKey = null            // load the host's song normally again
+                scope.launch { live.stop() }
+            }
+        }
 
         fun expectedPos(s: ListenSession): Long {
             val drift = if (s.isPlaying) (System.currentTimeMillis() - s.updatedAt).coerceAtLeast(0) else 0
@@ -444,6 +483,7 @@ class TogetherRepository @Inject constructor(
         }
 
         fun sync(s: ListenSession) {
+            if (listeningLive) return
             val st = player.playerState.value
             if (expectedSongId == null || st.currentSong?.id != expectedSongId) return
             val stale = s.isPlaying && System.currentTimeMillis() - s.updatedAt > 60_000
@@ -459,6 +499,7 @@ class TogetherRepository @Inject constructor(
         }
 
         suspend fun apply(s: ListenSession) = applyLock.withLock {
+            if (listeningLive) return@withLock
             val t = s.track ?: return@withLock
             if (s.preparing) return@withLock
             if (t.key != currentKey) {
@@ -483,6 +524,7 @@ class TogetherRepository @Inject constructor(
                 return@addSnapshotListener
             }
             _guest.value = s
+            followLive(s)
             scope.launch { apply(s) }
         }
         guestJob?.cancel()
@@ -513,6 +555,7 @@ class TogetherRepository @Inject constructor(
                 delay(4_000)
                 val s = _guest.value ?: continue
                 val st = player.playerState.value
+                if (listeningLive) continue
                 // The guest picked another song themselves
                 if (expectedSongId != null && st.currentSong != null && st.currentSong.id != expectedSongId &&
                     System.currentTimeMillis() - loadedAt > 8_000) {
@@ -565,6 +608,7 @@ class TogetherRepository @Inject constructor(
         guestListener?.remove(); guestListener = null
         _guest.value = null
         if (s != null) detachChat()
+        if (s != null && live.state.value !is com.waleve.player.service.live.LiveStreamer.State.Off) live.stop()
         val me = uid ?: return
         if (s != null) {
             runCatching {

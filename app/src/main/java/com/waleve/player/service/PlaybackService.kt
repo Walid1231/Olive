@@ -34,7 +34,21 @@ class PlaybackService : MediaSessionService() {
             } else spec
         }
 
-        val player = ExoPlayer.Builder(this)
+        // Live Listen Together: a copy of the decoded audio goes to LiveAudioTap (idle unless live)
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): androidx.media3.exoplayer.audio.AudioSink =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(com.waleve.player.service.live.LiveAudioTap.processor))
+                    .build()
+        }
+
+        val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(youtubeAware))
             .setAudioAttributes(
                 AudioAttributes.Builder()

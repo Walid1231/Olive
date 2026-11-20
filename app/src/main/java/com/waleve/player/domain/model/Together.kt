@@ -94,6 +94,8 @@ data class ListenSession(
     /** Guests may play / pause / seek / skip and pick songs for everyone. */
     val openControl: Boolean = false,
     val startedAt: Long = 0,
+    /** The host is streaming live (WebRTC) — guests just listen, no downloading. */
+    val live: Boolean = false,
 )
 
 /** A playlist several friends edit together. */

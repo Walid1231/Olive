@@ -165,6 +165,8 @@ dependencies {
 
     // YoutubeDL (yt-dlp + FFmpeg for stream extraction & transcoding)
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    // Live Listen Together (WebRTC)
+    implementation("io.livekit:livekit-android:2.30.0")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 
     // Networking (InnerTube API)
