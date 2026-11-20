@@ -1,0 +1,55 @@
+name: probe newpipe
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - shell: bash {0}
+        run: |
+          mkdir jars && cd jars
+          J=https://jitpack.io/com/github/TeamNewPipe
+          curl -sfLO $J/NewPipeExtractor/v0.27.1/NewPipeExtractor-v0.27.1.jar || curl -sfLo NewPipeExtractor-v0.27.1.jar $J/NewPipeExtractor/extractor/v0.27.1/extractor-v0.27.1.jar
+          curl -s $J/NewPipeExtractor/v0.27.1/NewPipeExtractor-v0.27.1.pom | grep -A2 "<artifactId>" | head -40
+          curl -sfLO $J/nanojson/e9d656ddb49a412a5a0a5d5ef20ca7ef09549996/nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996.jar
+          curl -sfLO https://repo1.maven.org/maven2/org/jsoup/jsoup/1.24.1/jsoup-1.24.1.jar
+          curl -sfLO https://repo1.maven.org/maven2/org/mozilla/rhino/1.8.1/rhino-1.8.1.jar
+          curl -sfLO https://repo1.maven.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar
+          curl -sfLO https://repo1.maven.org/maven2/com/google/protobuf/protobuf-javalite/4.36.2/protobuf-javalite-4.36.2.jar
+          ls -la; cd ..
+          cat > T.java <<'JAVA'
+          import org.schabi.newpipe.extractor.*;
+          import org.schabi.newpipe.extractor.downloader.*;
+          import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager;
+          import java.net.*; import java.io.*; import java.util.*;
+          public class T {
+            static class D extends Downloader {
+              public Response execute(Request r) throws IOException {
+                HttpURLConnection c = (HttpURLConnection) new URL(r.url()).openConnection();
+                c.setRequestMethod(r.httpMethod());
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0");
+                if (r.headers() != null) r.headers().forEach((k, v) -> v.forEach(x -> c.addRequestProperty(k, x)));
+                if (r.dataToSend() != null) { c.setDoOutput(true); c.getOutputStream().write(r.dataToSend()); }
+                int code = c.getResponseCode();
+                InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                String body = in == null ? "" : new String(in.readAllBytes(), "UTF-8");
+                return new Response(code, c.getResponseMessage(), c.getHeaderFields(), body, c.getURL().toString());
+              }
+            }
+            public static void main(String[] a) throws Exception {
+              NewPipe.init(new D());
+              long t = System.currentTimeMillis();
+              System.out.println("sts = " + YoutubeJavaScriptPlayerManager.getSignatureTimestamp("jNQXAC9IVRw") + " (" + (System.currentTimeMillis()-t) + " ms)");
+              t = System.currentTimeMillis();
+              String s = "AOq0QJ8wRgIhAKbcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuv=";
+              String d = YoutubeJavaScriptPlayerManager.deobfuscateSignature("jNQXAC9IVRw", s);
+              System.out.println("signature ok, changed=" + !d.equals(s) + " len " + s.length() + "->" + d.length() + " (" + (System.currentTimeMillis()-t) + " ms)");
+              t = System.currentTimeMillis();
+              String u = "https://rr1---sn-abc.googlevideo.com/videoplayback?expire=1&n=kH5jFQ3cB7aLmq&itag=251";
+              String u2 = YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated("jNQXAC9IVRw", u);
+              System.out.println("n param: " + u2.replaceAll(".*[?&]n=([^&]*).*", "$1") + " (changed=" + !u2.equals(u) + ", " + (System.currentTimeMillis()-t) + " ms)");
+            }
+          }
+          JAVA
+          javac -cp "jars/*" T.java && java -cp "jars/*:." T
