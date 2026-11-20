@@ -17,6 +17,28 @@ val localProps = Properties().apply {
 }
 fun secret(name: String): String = (System.getenv(name) ?: localProps.getProperty(name) ?: "").trim()
 
+// Firebase settings read from google-services.json, so the app can start Firebase itself when
+// Android skips Firebase's automatic start-up (seen on some Xiaomi / MIUI phones).
+val firebaseCfg: Map<String, String> = run {
+    val f = file("google-services.json")
+    if (!f.exists()) return@run emptyMap<String, String>()
+    @Suppress("UNCHECKED_CAST")
+    val root = groovy.json.JsonSlurper().parse(f) as Map<String, Any?>
+    val info = root["project_info"] as? Map<String, Any?> ?: emptyMap()
+    @Suppress("UNCHECKED_CAST")
+    val clients = root["client"] as? List<Map<String, Any?>> ?: emptyList()
+    val client = clients.firstOrNull {
+        ((it["client_info"] as? Map<*, *>)?.get("android_client_info") as? Map<*, *>)?.get("package_name") == "com.waleve.player"
+    } ?: clients.firstOrNull()
+    mapOf(
+        "APP_ID" to ((client?.get("client_info") as? Map<*, *>)?.get("mobilesdk_app_id") as? String).orEmpty(),
+        "API_KEY" to (((client?.get("api_key") as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("current_key") as? String).orEmpty(),
+        "PROJECT_ID" to (info["project_id"] as? String).orEmpty(),
+        "SENDER_ID" to (info["project_number"] as? String).orEmpty(),
+        "BUCKET" to (info["storage_bucket"] as? String).orEmpty(),
+    )
+}
+
 android {
     namespace = "com.waleve.player"
     compileSdk = 35
@@ -25,8 +47,8 @@ android {
         applicationId = "com.waleve.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.5.10"
+        versionCode = 25
+        versionName = "1.5.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -35,6 +57,9 @@ android {
         buildConfigField("int", "VERSION_CODE", "${defaultConfig.versionCode}")
 
         // Supabase Storage (used to share local song / audiobook files with friends)
+        listOf("APP_ID", "API_KEY", "PROJECT_ID", "SENDER_ID", "BUCKET").forEach { k ->
+            buildConfigField("String", "FIREBASE_$k", "\"${firebaseCfg[k].orEmpty()}\"")
+        }
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
         buildConfigField("String", "SUPABASE_BUCKET", "\"${secret("SUPABASE_BUCKET").ifEmpty { "olive-shares" }}\"")

@@ -1,4 +1,15 @@
-## Olive 1.5.10 · No more cut-off labels
+## Olive 1.5.11 · New Download page + Xiaomi fix
+
+### 🛠 Fixed: Olive didn't open on some Xiaomi / Redmi phones
+- Some MIUI phones skip Firebase's automatic start-up, so Olive crashed at launch with "Default FirebaseApp is not initialized". Olive now starts Firebase itself.
+
+### ⬇️ Download page, redesigned (clean, no emojis)
+- **One smart link bar:** tap **Paste** and Olive pastes the link and opens the formats in one go. Once a link is in, an arrow button replaces it, and the keyboard's Go key works too.
+- Olive shows what it recognised ("YouTube playlist", "SoundCloud link"…) and "Reading…" while it works.
+- **Share → Olive:** in YouTube or any browser, tap Share and pick Olive. The Download page opens with that link and the formats ready.
+- The empty page has a simple 3-step guide, a share tip and your **recent downloads** (tap to play) in place of the big floating icon and emoji chips.
+
+## Olive 1.5.10 (previous) · No more cut-off labels
 
 - **Library:** "Songs | Audiobooks" always shows the full words. With a big system font size, the text shrinks a little to fit instead of being cut off.
 - **Friends:** "Inbox | Friends | Requests" shows full names, and the numbers now sit in small round badges (a badge only appears when there's something to show).
