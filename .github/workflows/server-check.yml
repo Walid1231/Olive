@@ -1,0 +1,10 @@
+name: Server check
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s -X POST "https://wbeiwxkkqmhoyekvfztr.supabase.co/functions/v1/olive-api?health=1"; echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://wbeiwxkkqmhoyekvfztr.supabase.co/functions/v1/olive-api -d '{"action":"upload"}')
+          echo "without login → $code"

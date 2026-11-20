@@ -55,6 +55,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
+  // Public health check: says whether live streaming is configured (never shows values)
+  if (new URL(req.url).searchParams.get("health") === "1") {
+    const u = Deno.env.get("LIVEKIT_URL") ?? "";
+    return json({
+      livekit: Boolean(u && Deno.env.get("LIVEKIT_API_KEY") && Deno.env.get("LIVEKIT_API_SECRET")),
+      urlLooksRight: /^wss:\/\/[^\s/]+$/.test(u.trim()),
+    });
+  }
+
   let user: { uid: string; token: string };
   try {
     user = await verifyFirebase(req);
@@ -124,7 +133,7 @@ Deno.serve(async (req) => {
         .setNotBefore(now - 10)
         .setExpirationTime(now + 6 * 3600)
         .sign(new TextEncoder().encode(secret));
-      return json({ url: lkUrl, token, room });
+      return json({ url: lkUrl.trim(), token, room });
     }
 
     default:
