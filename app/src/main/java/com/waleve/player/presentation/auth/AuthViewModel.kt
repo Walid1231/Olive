@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 sealed class AuthUiEvent {
-    data class Error(val message: String) : AuthUiEvent()
+    /** [detail]: short technical line (which step failed and why), shown small under the message. */
+    data class Error(val message: String, val detail: String? = null) : AuthUiEvent()
     data object SignInSuccess : AuthUiEvent()
     data object SignOutSuccess : AuthUiEvent()
 }
@@ -50,7 +51,7 @@ class AuthViewModel @Inject constructor(
             result.onSuccess {
                 _events.emit(AuthUiEvent.SignInSuccess)
             }.onFailure { e ->
-                _events.emit(AuthUiEvent.Error(e.message ?: "Sign-in failed"))
+                _events.emit(AuthUiEvent.Error(e.message ?: "Sign-in failed", (e as? com.waleve.player.domain.repository.SignInFailure)?.detail))
             }
             _isSigningIn.value = false
         }

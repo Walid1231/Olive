@@ -2,14 +2,23 @@ package com.waleve.player.service
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import com.waleve.player.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -20,6 +29,7 @@ import kotlinx.coroutines.launch
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,14 +45,18 @@ data class GithubRelease(
 data class GithubAsset(
     val name: String,
     val size: Long,
-    @SerialName("browser_download_url") val browserDownloadUrl: String
+    @SerialName("browser_download_url") val browserDownloadUrl: String,
+    /** "sha256:…", which GitHub lists for every release file. */
+    val digest: String? = null,
 )
 
 data class UpdateInfo(
     val version: String,
     val releaseNotes: String,
     val downloadUrl: String,
-    val fileSize: Long
+    val fileSize: Long,
+    /** Expected SHA-256 of the APK (hex), when GitHub gave one. */
+    val sha256: String? = null,
 )
 
 sealed class DownloadState {
@@ -84,10 +98,134 @@ class AppUpdateChecker @Inject constructor(
         }
     }
 
-    /** Already-downloaded APK for [info], if complete. */
+    private fun apkFileFor(version: String) = File(File(context.cacheDir, "updates"), "olive-$version.apk")
+
+    /**
+     * A finished download for [info] that really is this update, or null. Half-finished or
+     * damaged files are deleted here — installing one is what made Android say "App not installed".
+     */
     fun downloadedFor(info: UpdateInfo): File? {
-        val f = File(File(context.cacheDir, "updates"), "olive-${info.version}.apk")
-        return f.takeIf { it.exists() && (info.fileSize <= 0 || it.length() == info.fileSize) }
+        val f = apkFileFor(info.version)
+        if (!f.exists()) return null
+        val ok = (info.fileSize <= 0 || f.length() == info.fileSize) &&
+            archiveInfo(f, 0)?.let { it.packageName == context.packageName && it.versionName == info.version } == true
+        if (!ok) f.delete()
+        return f.takeIf { ok }
+    }
+
+    // ─── Download that keeps going if the dialog closes or the screen rotates ───
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var downloadJob: Job? = null
+    private val _download = MutableStateFlow<Pair<String, DownloadState>?>(null)
+    /** The running / last download as (version, state). */
+    val download: StateFlow<Pair<String, DownloadState>?> = _download.asStateFlow()
+
+    fun startDownload(info: UpdateInfo) {
+        if (downloadJob?.isActive == true && _download.value?.first == info.version) return
+        downloadJob?.cancel()
+        _download.value = info.version to DownloadState.Downloading(0f)
+        downloadJob = scope.launch {
+            downloadApk(info.downloadUrl, info.version, info.fileSize, info.sha256).collect { _download.value = info.version to it }
+        }
+    }
+
+    /** Forget a finished/failed download (e.g. its file turned out to be damaged). */
+    fun clearDownload() {
+        if (downloadJob?.isActive != true) _download.value = null
+    }
+
+    // ─── Checks before handing the file to Android's installer ───
+
+    @Suppress("DEPRECATION")
+    private fun archiveInfo(file: File, flags: Int): PackageInfo? = runCatching {
+        if (Build.VERSION.SDK_INT >= 33) context.packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.PackageInfoFlags.of(flags.toLong()))
+        else context.packageManager.getPackageArchiveInfo(file.absolutePath, flags)
+    }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private fun installedInfo(flags: Int): PackageInfo? = runCatching {
+        if (Build.VERSION.SDK_INT >= 33) context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+        else context.packageManager.getPackageInfo(context.packageName, flags)
+    }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private fun signers(info: PackageInfo): Set<String> {
+        val sigs = if (Build.VERSION.SDK_INT >= 28) {
+            val si = info.signingInfo ?: return emptySet()
+            if (si.hasMultipleSigners()) si.apkContentsSigners else si.signingCertificateHistory
+        } else info.signatures
+        return sigs.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
+    }
+
+    private fun hex(bytes: ByteArray) = bytes.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+
+    private fun sha256Of(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(256 * 1024)
+            while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n) }
+        }
+        return hex(md.digest())
+    }
+
+    /** Space Android can give us right now (counts caches it would clear). */
+    private fun allocatableBytes(): Long = runCatching {
+        val sm = context.getSystemService(android.os.storage.StorageManager::class.java)
+        sm.getAllocatableBytes(android.os.storage.StorageManager.UUID_DEFAULT)
+    }.getOrElse { context.filesDir.usableSpace }
+
+    /** Drop Olive's own throw-away files: copies of played songs, leftovers of old downloads. */
+    private fun freeOwnCache() {
+        File(context.cacheDir, "play_cache").deleteRecursively()
+        val old = System.currentTimeMillis() - 10 * 60_000L
+        File(context.cacheDir, "yt_dlp_downloads").listFiles()?.filter { it.lastModified() < old }?.forEach { it.deleteRecursively() }
+    }
+
+    /** Problem with a freshly downloaded file, or null when it is complete and really an Olive APK. */
+    private fun verifyDownloaded(file: File, size: Long, sha256: String?): String? {
+        if (size > 0 && file.length() != size) return "The download didn't finish. Tap Try again."
+        if (!sha256.isNullOrBlank() && !sha256Of(file).equals(sha256, ignoreCase = true)) return "The download got damaged on the way. Tap Try again."
+        val info = archiveInfo(file, 0) ?: return "The download got damaged on the way. Tap Try again."
+        if (info.packageName != context.packageName) return "This file isn't an Olive update."
+        return null
+    }
+
+    /**
+     * Makes sure Android will accept [apkFile] before opening its installer, so problems get a
+     * clear message instead of "App not installed". Null = go ahead.
+     */
+    suspend fun prepareInstall(apkFile: File): String? = kotlinx.coroutines.withContext(Dispatchers.IO) { checkInstallable(apkFile) }
+
+    private fun checkInstallable(apkFile: File): String? {
+        if (!apkFile.exists()) return "The update file is gone. Tap Download again."
+        @Suppress("DEPRECATION")
+        val certs = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val update = archiveInfo(apkFile, certs)
+        if (update == null || update.packageName != context.packageName) {
+            apkFile.delete()
+            return "The update file was damaged, so it was deleted. Tap Download again."
+        }
+        val installed = installedInfo(certs)
+        if (installed != null) {
+            if (PackageInfoCompat.getLongVersionCode(update) < PackageInfoCompat.getLongVersionCode(installed)) {
+                return "This file is an older Olive than the one you have."
+            }
+            val a = signers(update)
+            val b = signers(installed)
+            if (a.isNotEmpty() && b.isNotEmpty() && a.intersect(b).isEmpty()) {
+                return "The Olive on this phone came from a different build, so Android won't update it. Uninstall Olive once, then install this file."
+            }
+        }
+        // Installing unpacks the app: needs about 2.5× the file size free
+        val need = (apkFile.length() * 2.5).toLong()
+        if (allocatableBytes() < need) freeOwnCache()
+        val free = allocatableBytes()
+        if (free < need) {
+            val mb = (need - free) / (1024 * 1024) + 1
+            return "Not enough free storage to install. Free up about $mb MB, then tap Install now."
+        }
+        return null
     }
 
     /** True when the last check couldn't reach GitHub at all (so "no update" isn't known). */
@@ -158,7 +296,8 @@ class AppUpdateChecker @Inject constructor(
                         version = remoteVersion,
                         releaseNotes = release.body ?: "",
                         downloadUrl = apkAsset.browserDownloadUrl,
-                        fileSize = apkAsset.size
+                        fileSize = apkAsset.size,
+                        sha256 = apkAsset.digest?.substringAfter("sha256:", "")?.takeIf { it.length == 64 },
                     )
                 }
             }
@@ -196,23 +335,32 @@ class AppUpdateChecker @Inject constructor(
      * On slow links GitHub limits each connection, so 4 at once is usually 2–4× faster.
      * Falls back to a single connection if the server doesn't support parts.
      */
-    fun downloadApk(url: String, version: String = "update"): Flow<DownloadState> = kotlinx.coroutines.flow.channelFlow {
+    fun downloadApk(
+        url: String,
+        version: String = "update",
+        expectedSize: Long = 0,
+        sha256: String? = null,
+    ): Flow<DownloadState> = kotlinx.coroutines.flow.channelFlow {
         send(DownloadState.Downloading(0f))
         val client = okHttpClient.newBuilder()
             .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+        val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val apkFile = File(updatesDir, "olive-$version.apk")
+        // Written here first and renamed only after it checks out, so a cut-off download
+        // can never be offered for installing later.
+        val partFile = File(updatesDir, "olive-$version.apk.part")
         try {
-            val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
-            updatesDir.listFiles()?.forEach { it.delete() }   // keep only this version
-            val apkFile = File(updatesDir, "olive-$version.apk")
+            updatesDir.listFiles()?.forEach { it.delete() }   // old versions and half-finished files
 
-            // Probe: follow the redirect once, learn the size and whether parts are allowed
+            // Probe: learn the size and whether parts are allowed. Every request below goes to the
+            // GitHub link again (not the redirect it gives), because that redirect expires in minutes.
             val probe = client.newCall(Request.Builder().url(url).header("Range", "bytes=0-0").build()).execute()
-            val finalUrl = probe.request.url.toString()
             val total = probe.header("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: -1L
             val ranged = probe.code == 206 && total > 0
             probe.close()
+            val finalUrl = url
 
             val done = java.util.concurrent.atomic.AtomicLong(0)
             var lastSent = 0f
@@ -229,7 +377,7 @@ class AppUpdateChecker @Inject constructor(
                     val body = resp.body ?: run { send(DownloadState.Error("Empty response")); return@channelFlow }
                     val len = body.contentLength()
                     body.byteStream().use { input ->
-                        FileOutputStream(apkFile).use { out ->
+                        FileOutputStream(partFile).use { out ->
                             val buf = ByteArray(64 * 1024)
                             while (true) {
                                 val n = input.read(buf); if (n < 0) break
@@ -240,7 +388,7 @@ class AppUpdateChecker @Inject constructor(
                     }
                 }
             } else {
-                java.io.RandomAccessFile(apkFile, "rw").use { it.setLength(total) }
+                java.io.RandomAccessFile(partFile, "rw").use { it.setLength(total) }
                 val parts = 4
                 val chunk = total / parts
                 kotlinx.coroutines.coroutineScope {
@@ -254,7 +402,7 @@ class AppUpdateChecker @Inject constructor(
                                 try {
                                     client.newCall(Request.Builder().url(finalUrl).header("Range", "bytes=$pos-$to").build()).execute().use { resp ->
                                         if (resp.code != 206) throw java.io.IOException("HTTP ${resp.code}")
-                                        java.io.RandomAccessFile(apkFile, "rw").use { raf ->
+                                        java.io.RandomAccessFile(partFile, "rw").use { raf ->
                                             raf.seek(pos)
                                             resp.body!!.byteStream().use { input ->
                                                 val buf = ByteArray(64 * 1024)
@@ -275,19 +423,31 @@ class AppUpdateChecker @Inject constructor(
                         }
                     }.joinAll()
                 }
-                if (apkFile.length() != total || done.get() < total) {
-                    send(DownloadState.Error("Download incomplete — tap Try again")); return@channelFlow
+                if (done.get() < total) {
+                    partFile.delete()
+                    send(DownloadState.Error("The download didn't finish. Tap Try again.")); return@channelFlow
                 }
             }
+            // Check it before it can be installed
+            val problem = verifyDownloaded(partFile, if (total > 0) total else expectedSize, sha256)
+            if (problem != null) {
+                partFile.delete()
+                send(DownloadState.Error(problem)); return@channelFlow
+            }
+            if (!partFile.renameTo(apkFile)) { partFile.copyTo(apkFile, overwrite = true); partFile.delete() }
             send(DownloadState.Success(apkFile))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            partFile.delete()
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading APK", e)
-            send(DownloadState.Error(e.message ?: "Download failed — check your internet"))
+            partFile.delete()
+            send(DownloadState.Error("Download failed: ${e.message ?: "check your internet"}. Tap Try again."))
         }
     }.flowOn(Dispatchers.IO)
     
-    fun installApk(apkFile: File) {
-        try {
+    fun installApk(apkFile: File): Boolean {
+        return try {
             val uri = FileProvider.getUriForFile(
                 context,
                 "${BuildConfig.APPLICATION_ID}.fileprovider",
@@ -300,8 +460,10 @@ class AppUpdateChecker @Inject constructor(
             }
             
             context.startActivity(intent)
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Error installing APK", e)
+            false
         }
     }
 }

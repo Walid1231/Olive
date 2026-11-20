@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,7 +55,9 @@ import com.waleve.player.presentation.theme.GlassSub
 import com.waleve.player.service.AppUpdateChecker
 import com.waleve.player.service.DownloadState
 import com.waleve.player.service.UpdateInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Strip the GitHub markdown so the notes read as clean text. */
@@ -80,18 +83,44 @@ fun UpdateDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var state by remember(updateInfo.version) {
-        mutableStateOf<DownloadState>(updateChecker.downloadedFor(updateInfo)?.let { DownloadState.Success(it) } ?: DownloadState.Idle)
-    }
+    // The download runs in the updater itself, so it keeps going if this dialog is rebuilt
+    val shared by updateChecker.download.collectAsState()
+    var ready by remember(updateInfo.version) { mutableStateOf<File?>(null) }   // finished earlier and checked
+    var problem by remember(updateInfo.version) { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    var autoInstall by remember { mutableStateOf(false) }
     var needsPermission by remember { mutableStateOf(false) }
 
+    LaunchedEffect(updateInfo.version) {
+        ready = withContext(Dispatchers.IO) { updateChecker.downloadedFor(updateInfo) }
+    }
+    val state: DownloadState = shared?.takeIf { it.first == updateInfo.version }?.second
+        ?: ready?.let { DownloadState.Success(it) }
+        ?: DownloadState.Idle
+
     fun install(file: File) {
-        if (updateChecker.canInstall()) {
-            updateChecker.installApk(file)
-        } else {
-            updateChecker.pendingInstall = file
-            needsPermission = true
+        if (checking) return
+        scope.launch {
+            checking = true
+            problem = null
+            // Make sure Android will take it, so a problem gets a clear message
+            val err = updateChecker.prepareInstall(file)
+            checking = false
+            when {
+                err != null -> {
+                    problem = err
+                    if (!file.exists()) { ready = null; updateChecker.clearDownload() }
+                }
+                updateChecker.canInstall() -> if (!updateChecker.installApk(file)) problem = "Couldn't open Android's installer. Tap Install now again."
+                else -> { updateChecker.pendingInstall = file; needsPermission = true }
+            }
         }
+    }
+
+    // Download finished after tapping "Download & install" → open the installer
+    LaunchedEffect(state) {
+        val s = state
+        if (s is DownloadState.Success && autoInstall) { autoInstall = false; install(s.file) }
     }
 
     // Coming back from Settings with the permission → install right away
@@ -100,7 +129,7 @@ fun UpdateDialog(
         val obs = LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_RESUME && needsPermission && updateChecker.canInstall()) {
                 needsPermission = false
-                updateChecker.pendingInstall?.let { updateChecker.installApk(it) }
+                updateChecker.pendingInstall?.let { if (!updateChecker.installApk(it)) problem = "Couldn't open Android's installer. Tap Install now again." }
             }
         }
         owner.lifecycle.addObserver(obs)
@@ -144,10 +173,14 @@ fun UpdateDialog(
                     Text("Keep Olive open — this takes a minute on mobile data.", color = GlassMuted, fontSize = 12.sp)
                 }
                 is DownloadState.Error -> {
-                    Text("Download failed: ${st.message}", color = GlassDanger, fontSize = 13.sp)
+                    Text(st.message, color = GlassDanger, fontSize = 13.sp)
                     Spacer(Modifier.height(10.dp))
                 }
                 else -> {}
+            }
+            problem?.let {
+                Text(it, color = GlassDanger, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
             }
 
             if (needsPermission) {
@@ -163,16 +196,16 @@ fun UpdateDialog(
             if (!downloading) {
                 Spacer(Modifier.height(4.dp))
                 when (val st = state) {
-                    is DownloadState.Success -> GradientButton("Install now", { install(st.file) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.SystemUpdate, height = 50.dp)
+                    is DownloadState.Success -> GradientButton(
+                        if (checking) "Checking the file…" else "Install now", { install(st.file) }, Modifier.fillMaxWidth(),
+                        icon = Icons.Rounded.SystemUpdate, loading = checking, height = 50.dp,
+                    )
                     else -> GradientButton(
-                        if (st is DownloadState.Error) "Try again" else "Download & install",
+                        if (st is DownloadState.Error || problem != null) "Download again" else "Download & install",
                         {
-                            scope.launch {
-                                updateChecker.downloadApk(updateInfo.downloadUrl, updateInfo.version).collect { s ->
-                                    state = s
-                                    if (s is DownloadState.Success) install(s.file)
-                                }
-                            }
+                            problem = null
+                            autoInstall = true
+                            updateChecker.startDownload(updateInfo)
                         },
                         Modifier.fillMaxWidth(), icon = Icons.Rounded.SystemUpdate, height = 50.dp,
                     )

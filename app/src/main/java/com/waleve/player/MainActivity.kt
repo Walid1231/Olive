@@ -93,7 +93,15 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    /**
+     * Asks for music + notification access on the very first start only. Asking on every start
+     * made Android block the music permission after two "Don't allow"s; later the Library / Home
+     * card asks again (or opens Settings when Android won't).
+     */
     private fun requestRequiredPermissions() {
+        val prefs = getSharedPreferences("olive_permissions", MODE_PRIVATE)
+        if (prefs.getBoolean("startup_asked", false)) return
+        prefs.edit().putBoolean("startup_asked", true).apply()
         val permissions = mutableListOf<String>()
 
         // Audio read permission
@@ -122,6 +130,9 @@ class MainActivity : ComponentActivity() {
         }
 
         if (permissions.isNotEmpty()) {
+            if (com.waleve.player.presentation.components.audioPermission in permissions) {
+                com.waleve.player.presentation.components.markAudioPermissionAsked(this)
+            }
             requestPermissionLauncher.launch(permissions.toTypedArray())
         }
     }

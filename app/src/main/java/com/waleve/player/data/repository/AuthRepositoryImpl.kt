@@ -12,6 +12,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.waleve.player.domain.model.UserProfile
 import com.waleve.player.domain.repository.AuthRepository
+import com.waleve.player.domain.repository.SignInFailure
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -112,35 +114,19 @@ class AuthRepositoryImpl @Inject constructor(
     // ─── Google Sign-In ──────────────────────────────────────────────────────
 
     override suspend fun signInWithGoogle(activityContext: Context): Result<UserProfile> {
+        var step = "Google account"
         return try {
-            val credentialManager = CredentialManager.create(activityContext)
+            val idToken = googleIdToken(activityContext)
 
-            // 1st choice: the explicit "Sign in with Google" sheet — always shows every Gmail account on the phone.
-            val idToken = try {
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build())
-                    .build()
-                tokenFrom(credentialManager.getCredential(activityContext, request).credential)
-            } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("AuthRepository", "SignInWithGoogle option failed, trying One Tap", e)
-                // Fallback: One Tap account chooser
-                val option = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(WEB_CLIENT_ID)
-                    .setAutoSelectEnabled(false)
-                    .build()
-                val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-                tokenFrom(credentialManager.getCredential(activityContext, request).credential)
-            }
-
-            // Authenticate with Firebase
+            // Authenticate with Firebase. A first connection over a half-working network often
+            // fails, so try a couple more times before giving up.
+            step = "Firebase"
             val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
-            val authResult = auth.signInWithCredential(firebaseCredential).await()
-            val user = authResult.user ?: return Result.failure(Exception("Sign-in returned no user"))
+            val authResult = retryOnNetwork { auth.signInWithCredential(firebaseCredential).await() }
+            val user = authResult.user ?: return Result.failure(SignInFailure("Sign-in returned no user", step))
 
             // Create the Firestore profile on first sign-in (keeps a custom name/photo on later sign-ins)
+            step = "profile"
             val profile = try {
                 ensureUserProfile(
                     uid = user.uid,
@@ -150,14 +136,127 @@ class AuthRepositoryImpl @Inject constructor(
                 )
             } catch (e: Exception) {
                 android.util.Log.e("AuthRepository", "Signed in, but profile save failed", e)
-                return Result.failure(Exception(friendlyError(e)))
+                return Result.failure(signInFailure(e, step, activityContext))
             }
 
             Result.success(profile)
         } catch (e: Exception) {
-            android.util.Log.e("AuthRepository", "Google Sign-In failed", e)
-            Result.failure(Exception(friendlyError(e)))
+            android.util.Log.e("AuthRepository", "Google Sign-In failed at $step", e)
+            Result.failure(signInFailure(e, step, activityContext))
         }
+    }
+
+    /** Google ID token from the account picker. */
+    private suspend fun googleIdToken(activityContext: Context): String {
+        val credentialManager = CredentialManager.create(activityContext)
+        // 1st choice: the explicit "Sign in with Google" sheet — always shows every Gmail account on the phone.
+        suspend fun signInSheet(): String {
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build())
+                .build()
+            return tokenFrom(credentialManager.getCredential(activityContext, request).credential)
+        }
+        // Fallback: One Tap account chooser
+        suspend fun oneTap(): String {
+            val option = GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(WEB_CLIENT_ID)
+                .setAutoSelectEnabled(false)
+                .build()
+            val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+            return tokenFrom(credentialManager.getCredential(activityContext, request).credential)
+        }
+        return try {
+            try {
+                signInSheet()
+            } catch (e: androidx.credentials.exceptions.GetCredentialInterruptedException) {
+                // Google Play services lost the connection for a moment: once more
+                kotlinx.coroutines.delay(1_200)
+                signInSheet()
+            }
+        } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("AuthRepository", "SignInWithGoogle option failed, trying One Tap", e)
+            oneTap()
+        }
+    }
+
+    private suspend fun <T> retryOnNetwork(times: Int = 3, block: suspend () -> T): T {
+        var last: Exception? = null
+        repeat(times) { attempt ->
+            try {
+                return block()
+            } catch (e: com.google.firebase.FirebaseNetworkException) {
+                last = e
+                android.util.Log.w("AuthRepository", "Network error, attempt ${attempt + 1}", e)
+                if (attempt < times - 1) kotlinx.coroutines.delay(1_000L * (attempt + 1))
+            }
+        }
+        throw last ?: IllegalStateException("retry failed")
+    }
+
+    private fun isNetworkError(e: Throwable): Boolean {
+        val msg = ((e.message ?: "") + " " + (e.cause?.message ?: "")).lowercase()
+        return e is com.google.firebase.FirebaseNetworkException ||
+            e is androidx.credentials.exceptions.GetCredentialInterruptedException ||
+            e is java.io.IOException || "network" in msg || "timeout" in msg || "unreachable" in msg
+    }
+
+    /**
+     * Message + detail for a failed sign-in. For network errors it checks the connection to
+     * Google's sign-in server itself, so it doesn't claim "no internet" when the internet works.
+     */
+    private suspend fun signInFailure(e: Throwable, step: String, context: Context): SignInFailure {
+        val what = "$step · ${e.javaClass.simpleName}"
+        if (!isNetworkError(e)) {
+            return SignInFailure(friendlyError(e), "$what: ${(e.message ?: "").take(160)}")
+        }
+        val probe = probeGoogle(context)
+        val message = when {
+            !probe.online -> "No internet connection."
+            probe.ipv6Broken -> "Google sign-in can't connect on this network (its IPv6 isn't working). Switch between Wi-Fi and mobile data, then try again."
+            !probe.ipv4Ok && !probe.ipv6Ok -> "This network is blocking Google sign-in. Try mobile data or another Wi-Fi."
+            else -> "Couldn't reach Google sign-in just now. Tap Continue with Google again."
+        }
+        return SignInFailure(message, "$what · ${probe.summary}")
+    }
+
+    private class NetProbe(val online: Boolean, val ipv4Ok: Boolean, val ipv6Ok: Boolean, val hasIpv6: Boolean, val summary: String) {
+        val ipv6Broken get() = hasIpv6 && !ipv6Ok && ipv4Ok
+    }
+
+    /** Is the phone online, and can it open a connection to Google's sign-in server over IPv4 / IPv6? */
+    private suspend fun probeGoogle(context: Context): NetProbe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val online = runCatching {
+            val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+            cm.getNetworkCapabilities(cm.activeNetwork)
+                ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        }.getOrDefault(true)
+        val addresses = runCatching { java.net.InetAddress.getAllByName("identitytoolkit.googleapis.com").toList() }.getOrDefault(emptyList())
+        val v4 = addresses.firstOrNull { it is java.net.Inet4Address }
+        val v6 = addresses.firstOrNull { it is java.net.Inet6Address }
+        fun connectMs(a: java.net.InetAddress?): Long? {
+            if (a == null) return null
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            return runCatching {
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(a, 443), 3_000) }
+                android.os.SystemClock.elapsedRealtime() - t0
+            }.getOrNull()
+        }
+        val t4 = async { connectMs(v4) }
+        val t6 = async { connectMs(v6) }
+        val ms4 = t4.await()
+        val ms6 = t6.await()
+        fun show(ms: Long?, addr: java.net.InetAddress?) = when {
+            addr == null -> "none"
+            ms == null -> "fail"
+            else -> "${ms}ms"
+        }
+        val summary = (if (online) "online" else "offline") +
+            " · dns ${addresses.count { it is java.net.Inet4Address }}v4/${addresses.count { it is java.net.Inet6Address }}v6" +
+            " · v4 ${show(ms4, v4)} · v6 ${show(ms6, v6)}"
+        NetProbe(online, ms4 != null, ms6 != null, v6 != null, summary)
     }
 
     private fun tokenFrom(credential: androidx.credentials.Credential): String {

@@ -8,7 +8,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,6 +68,27 @@ private fun Context.activity(): Activity? {
     return null
 }
 
+private const val PERM_PREFS = "olive_permissions"
+private const val KEY_ASKED_AUDIO = "asked_audio"
+
+/** Remember that Android has asked for music access once (needed to tell "never asked" from "blocked"). */
+fun markAudioPermissionAsked(context: Context) {
+    context.getSharedPreferences(PERM_PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_ASKED_AUDIO, true).apply()
+}
+
+private fun audioPermissionAsked(context: Context): Boolean =
+    context.getSharedPreferences(PERM_PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ASKED_AUDIO, false)
+
+/** Olive's page in Android Settings, where Permissions → Music and audio can be turned on. */
+fun openAppSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
 /**
  * Live "is music access granted?" state. Re-checked every time the app comes back to the
  * foreground (e.g. after the system dialog or returning from Settings). Calls [onGranted]
@@ -92,20 +116,55 @@ fun rememberAudioPermissionState(onGranted: () -> Unit): Boolean {
 
 /**
  * Glass card asking for access to music on the phone. Shows nothing when access is granted.
- * If the user chose "Don't ask again", the button opens the app's Settings page instead.
+ * When Android won't show its permission dialog (turned off earlier, or the request gets
+ * dropped), the button takes you to Olive's page in Settings instead of doing nothing.
  */
 @Composable
 fun StoragePermissionCard(onGranted: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val granted = rememberAudioPermissionState(onGranted)
-    var blocked by remember { mutableStateOf(false) }
+    val act = remember(context) { context.activity() }
+    // Asked before and Android won't ask again → only Settings can turn it on
+    var blocked by remember {
+        mutableStateOf(audioPermissionAsked(context) && act != null && !act.shouldShowRequestPermissionRationale(audioPermission))
+    }
+    var askedAt by remember { mutableLongStateOf(0L) }
+    var waiting by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }   // Android's dialog covers the app → we get paused
+
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_PAUSE) paused = true }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+
+    fun goToSettings() {
+        blocked = true
+        Toast.makeText(context, "Tap Permissions → Music and audio → Allow", Toast.LENGTH_LONG).show()
+        openAppSettings(context)
+    }
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        waiting = false
+        markAudioPermissionAsked(context)
         if (!ok) {
-            val act = context.activity()
-            blocked = act != null && !act.shouldShowRequestPermissionRationale(audioPermission)
+            // Answered "no" without any dialog on screen = Android refused by itself
+            val noDialog = !paused && SystemClock.elapsedRealtime() - askedAt < 1_500
+            val cantAskAgain = act == null || !act.shouldShowRequestPermissionRationale(audioPermission)
+            if (noDialog) goToSettings() else if (cantAskAgain) blocked = true
         }
         // when ok, the resume re-check flips the state and onGranted() runs
     }
+
+    // Some phones drop the request without an answer: don't leave the button dead
+    LaunchedEffect(waiting) {
+        if (waiting) {
+            kotlinx.coroutines.delay(1_500)
+            if (waiting && !paused) { waiting = false; goToSettings() }
+        }
+    }
+
     if (granted) return
 
     Column(modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp), alpha = 0.8f).padding(18.dp)) {
@@ -117,7 +176,7 @@ fun StoragePermissionCard(onGranted: () -> Unit, modifier: Modifier = Modifier) 
             Column(Modifier.weight(1f)) {
                 Text("Allow access to your music", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                 Text(
-                    if (blocked) "Access was turned off. Open Settings → Permissions → Music and audio → Allow."
+                    if (blocked) "Access is off. Open Settings → Permissions → Music and audio → Allow."
                     else "Olive needs permission to find the songs and audiobooks saved on this phone.",
                     color = GlassSub, fontSize = 13.sp,
                 )
@@ -126,16 +185,15 @@ fun StoragePermissionCard(onGranted: () -> Unit, modifier: Modifier = Modifier) 
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (blocked) {
-                GradientButton("Open settings", {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }, Modifier.weight(1f), icon = Icons.Filled.Settings, height = 44.dp)
+                GradientButton("Open settings", { openAppSettings(context) }, Modifier.weight(1f), icon = Icons.Filled.Settings, height = 44.dp)
             } else {
-                GradientButton("Allow access", { launcher.launch(audioPermission) }, Modifier.weight(1f), height = 44.dp)
+                GradientButton("Allow access", {
+                    paused = false
+                    askedAt = SystemClock.elapsedRealtime()
+                    waiting = true
+                    launcher.launch(audioPermission)
+                }, Modifier.weight(1f), height = 44.dp)
             }
         }
     }
 }
-

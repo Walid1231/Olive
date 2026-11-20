@@ -3,6 +3,9 @@ package com.waleve.player.domain.repository
 import com.waleve.player.domain.model.UserProfile
 import kotlinx.coroutines.flow.Flow
 
+/** A sign-in failure: [message] for the person, [detail] a short technical line to send to the developer. */
+class SignInFailure(message: String, val detail: String? = null) : Exception(message)
+
 /**
  * Repository for authentication operations.
  */

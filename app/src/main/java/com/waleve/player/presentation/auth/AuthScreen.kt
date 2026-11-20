@@ -61,12 +61,13 @@ fun AuthScreen(
     val isSigningIn by viewModel.isSigningIn.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var errorText by remember { mutableStateOf<String?>(null) }
+    var errorDetail by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is AuthUiEvent.SignInSuccess -> { errorText = null; onSignInSuccess() }
-                is AuthUiEvent.Error -> errorText = event.message
+                is AuthUiEvent.Error -> { errorText = event.message; errorDetail = event.detail }
                 else -> {}
             }
         }
@@ -103,6 +104,7 @@ fun AuthScreen(
                     .border(1.dp, GlassInk.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
                     .clickable(enabled = !isSigningIn) {
                         errorText = null
+                        errorDetail = null
                         // Credential Manager needs an Activity context, not the application context
                         viewModel.signInWithGoogle(context.findActivity() ?: context)
                     },
@@ -125,6 +127,13 @@ fun AuthScreen(
                     "⚠ $err", color = GlassDanger, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(GlassDanger.copy(alpha = 0.08f)).padding(12.dp),
                 )
+                // What actually failed, small: a screenshot of this tells exactly what went wrong
+                errorDetail?.let { d ->
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(d, color = GlassMuted, fontSize = 11.sp, textAlign = TextAlign.Center, lineHeight = 15.sp, modifier = Modifier.fillMaxWidth())
+                    }
+                }
             }
             Spacer(Modifier.height(14.dp))
             Text("Your music works offline without signing in.", color = GlassMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
