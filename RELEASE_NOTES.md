@@ -1,4 +1,21 @@
-## Olive 1.5.11 · New Download page + Xiaomi fix
+## Olive 1.5.12 · Online songs load much faster
+
+### ⚡ Why songs took 30–45 s, and what changed
+- YouTube now wants a special token for the old way Olive got song links, so every song fell back to yt-dlp, which is slow on a phone.
+- Olive now uses YouTube's **Vision Pro** link (no token, no JavaScript, the same one yt-dlp uses) and tries several ways **at the same time**. The first link that really answers wins, after a tiny 1 KB check.
+- yt-dlp only joins if nothing else worked within 2.5 s. It now keeps a cache, so it gets faster after the first song.
+- Fixed a bug where a failing yt-dlp attempt was run **twice**.
+- Faster connections: Olive tries IPv4 first and reuses connections, and the player shares them.
+- The next 3 songs in the queue get their links in the background, so skipping is instant.
+- Songs shared by friends now play through the same fast path.
+
+### 🩺 Settings → Streaming check
+- Shows how each method does on your phone and network, with timings, plus how long your last songs took to load. If songs are still slow, send a screenshot of it.
+
+### 🔔 Fixed: inbox badge
+- The number on the Home bell is centred and no longer cut off, even with a big font size. Tabs use the same badge.
+
+## Olive 1.5.11 (previous) · New Download page + Xiaomi fix
 
 ### 🛠 Fixed: Olive didn't open on some Xiaomi / Redmi phones
 - Some MIUI phones skip Firebase's automatic start-up, so Olive crashed at launch with "Default FirebaseApp is not initialized". Olive now starts Firebase itself.
