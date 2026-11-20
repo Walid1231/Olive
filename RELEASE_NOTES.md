@@ -1,6 +1,5 @@
-## Olive 1.5.12
+## Olive 1.5.13
 
-- Online songs start much faster
-- The next songs in the queue load in the background, so skipping is instant
-- New: Settings → Streaming check
-- Fixed the number on the inbox bell
+- Download button on the songs in Search's For you shelves (Song mixes, Trending and more)
+- Songs you have already downloaded show a tick
+- Downloads keep going when you leave a playlist page, two at a time

@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.shadow
@@ -58,6 +59,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -107,6 +110,8 @@ fun DiscoverContent(
     onDownload: (YtItem) -> Unit = {},
     loadingId: String? = null,
     playingId: String? = null,
+    downloads: Map<String, DownloadProgress> = emptyMap(),
+    saved: Set<String> = emptySet(),
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -151,7 +156,7 @@ fun DiscoverContent(
                 val bookChip = chips.firstOrNull { it.params == YouTubeMusicBrowser.AUDIOBOOKS }
                 if (selectedChip == null && bookChip != null) item(key = "bookBanner") { AudiobookBanner { onChip(bookChip) } }
                 home?.sections.orEmpty().forEach { section ->
-                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload, loadingId, playingId) }
+                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload, loadingId, playingId, downloads, saved) }
                 }
             }
         }
@@ -229,12 +234,15 @@ private fun ShelfHeader(section: YtSection) {
 private fun Shelf(
     section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit, onDownload: (YtItem) -> Unit,
     loadingId: String?, playingId: String?,
+    downloads: Map<String, DownloadProgress>, saved: Set<String>,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ShelfHeader(section)
         if (section.isSongList) {
-            // Quick picks: columns of 4 song rows, swipe sideways
+            // Quick picks: columns of 4 song rows, swipe sideways. Rows fill the screen and
+            // leave a slice of the next column showing, so there's room for the download button.
             val rows = minOf(4, section.items.size)
+            val rowWidth = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 56.dp).coerceIn(280.dp, 380.dp)
             LazyHorizontalGrid(
                 rows = GridCells.Fixed(rows),
                 modifier = Modifier.fillMaxWidth().height((rows * 64).dp),
@@ -242,13 +250,19 @@ private fun Shelf(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId}_$i" }) { i, item ->
-                    SongRow(item, Modifier.width(300.dp), state = stateOf(item, loadingId, playingId)) { onPlay(section.items, i) }
+                    SongRow(
+                        item, Modifier.width(rowWidth), state = stateOf(item, loadingId, playingId),
+                        trailing = { DownloadButton(downloads[item.videoId], isSaved(item, saved), { onDownload(item) }) },
+                    ) { onPlay(section.items, i) }
                 }
             }
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId ?: it.browseId}_$i" }) { i, item ->
-                    CardItem(item, onDownload = { onDownload(item) }, state = stateOf(item, loadingId, playingId)) {
+                    CardItem(
+                        item, onDownload = { onDownload(item) }, state = stateOf(item, loadingId, playingId),
+                        progress = downloads[item.videoId], saved = isSaved(item, saved),
+                    ) {
                         if (item.playable) onPlay(section.items.filter { it.playable }, section.items.filter { it.playable }.indexOf(item))
                         else onOpen(item)
                     }
@@ -264,6 +278,56 @@ fun stateOf(item: YtItem, loadingId: String?, playingId: String?): Int = when {
     item.videoId == loadingId -> 1
     item.videoId == playingId -> 2
     else -> 0
+}
+
+fun isSaved(item: YtItem, saved: Set<String>): Boolean = item.videoId?.let { it in saved } == true
+
+/**
+ * Download control for a YouTube song: arrow, then a progress ring while it saves, then a
+ * cloud tick once it's on the phone. [onCover] is the white-on-dark version for cover images.
+ */
+@Composable
+fun DownloadButton(
+    progress: DownloadProgress?,
+    saved: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onCover: Boolean = false,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tap: () -> Unit = {
+        when {
+            progress != null -> Unit
+            saved -> android.widget.Toast.makeText(context, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+            else -> onClick()
+        }
+    }
+    if (onCover) {
+        Box(
+            modifier.size(34.dp).clip(CircleShape)
+                .background(if (saved && progress == null) GlassAccent else Color.Black.copy(alpha = 0.45f))
+                .springClick(onClick = tap),
+            contentAlignment = Alignment.Center,
+        ) { DownloadGlyph(progress, saved, idle = Color.White, done = Color.White, size = 18.dp) }
+    } else {
+        Box(modifier.size(40.dp).clip(CircleShape).springClick(onClick = tap), contentAlignment = Alignment.Center) {
+            DownloadGlyph(progress, saved, idle = GlassMuted, done = GlassAccent, size = 22.dp)
+        }
+    }
+}
+
+@Composable
+private fun DownloadGlyph(progress: DownloadProgress?, saved: Boolean, idle: Color, done: Color, size: Dp) {
+    when {
+        progress != null -> {
+            val p = progress.progress / 100f
+            if (p in 0.01f..0.98f) CircularProgressIndicator(
+                progress = { p }, modifier = Modifier.size(size), color = done, strokeWidth = 2.dp, trackColor = idle.copy(alpha = 0.25f),
+            ) else CircularProgressIndicator(Modifier.size(size), color = done, strokeWidth = 2.dp)
+        }
+        saved -> Icon(Icons.Rounded.CloudDone, "Downloaded", tint = done, modifier = Modifier.size(size))
+        else -> Icon(Icons.Rounded.CloudDownload, "Download", tint = idle, modifier = Modifier.size(size))
+    }
 }
 
 /** Dim layer over a cover: a spinner while it loads, bouncing bars while it plays. */
@@ -307,7 +371,10 @@ fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable 
 }
 
 @Composable
-private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, state: Int = 0, onClick: () -> Unit) {
+private fun CardItem(
+    item: YtItem, onDownload: () -> Unit = {}, state: Int = 0,
+    progress: DownloadProgress? = null, saved: Boolean = false, onClick: () -> Unit,
+) {
     val artist = item.type == YtType.ARTIST
     val wide = item.type == YtType.VIDEO
     val w = if (wide) 240.dp else 150.dp
@@ -329,12 +396,8 @@ private fun CardItem(item: YtItem, onDownload: () -> Unit = {}, state: Int = 0, 
                     else -> Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
+            if (item.playable) DownloadButton(progress, saved, onDownload, Modifier.align(Alignment.BottomStart).padding(8.dp), onCover = true)
             if (item.audiobook) {
-                Box(
-                    Modifier.align(Alignment.BottomStart).padding(8.dp).size(34.dp).clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f)).springClick(onClick = onDownload),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.CloudDownload, "Download", tint = Color.White, modifier = Modifier.size(18.dp)) }
                 Row(
                     Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(10.dp))
                         .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFA08CFF), Color(0xFF6A5ACD))))
@@ -409,6 +472,7 @@ fun YtCollectionScreen(
     val c by vm.state.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val downloads by searchVm.activeDownloads.collectAsStateWithLifecycle()
+    val saved by searchVm.savedIds.collectAsStateWithLifecycle()
     val playerVm: com.waleve.player.presentation.player.PlayerViewModel = hiltViewModel()
     val ps by playerVm.playerState.collectAsStateWithLifecycle()
     val loadingId = ps.loadingSong?.videoId ?: (if (ps.isBuffering) ps.currentSong?.videoId else null)
@@ -462,13 +526,9 @@ fun YtCollectionScreen(
             }
             songs.isEmpty() -> item { Text("No songs here.", color = GlassSub) }
             else -> itemsIndexed(songs, key = { i, s -> "${s.videoId}_$i" }) { i, s ->
-                val p = downloads[s.videoId]
                 SongRow(
                     s, Modifier.fillMaxWidth(), state = stateOf(s, loadingId, playingId),
-                    trailing = {
-                        if (p != null) Text("${p.progress.toInt()}%", color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp))
-                        else IconButton(onClick = { downloadFor = s }) { Icon(Icons.Rounded.CloudDownload, "Download", tint = GlassMuted) }
-                    },
+                    trailing = { DownloadButton(downloads[s.videoId], isSaved(s, saved), { downloadFor = s }) },
                 ) { play(i) }
             }
         }
@@ -478,6 +538,7 @@ fun YtCollectionScreen(
         com.waleve.player.presentation.components.DownloadFormatSheet(
             title = s.title,
             durationSec = s.durationMs / 1000,
+            audiobook = s.audiobook,
             onDismiss = { downloadFor = null },
             onPick = { format, asAudiobook ->
                 searchVm.downloadSong(s.toSearchResult(), format, asAudiobook)

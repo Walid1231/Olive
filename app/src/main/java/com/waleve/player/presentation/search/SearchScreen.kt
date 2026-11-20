@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
@@ -70,6 +71,7 @@ fun SearchScreen(
     val searchResults  by viewModel.searchResults.collectAsStateWithLifecycle()
     val isSearching    by viewModel.isSearching.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
+    val savedIds       by viewModel.savedIds.collectAsStateWithLifecycle()
     val qualities      by viewModel.qualities.collectAsStateWithLifecycle()
     val isLoadingQualities by viewModel.isLoadingQualities.collectAsStateWithLifecycle()
 
@@ -79,6 +81,7 @@ fun SearchScreen(
 
     var streamingVideoId  by remember { mutableStateOf<String?>(null) }
     var showQualityDialogFor by remember { mutableStateOf<SearchResult?>(null) }
+    var dialogAsAudiobook by remember { mutableStateOf(false) }
     var isSearchBarFocused by remember { mutableStateOf(false) }
 
     // Breathing glow for idle state
@@ -236,6 +239,7 @@ fun SearchScreen(
                                     result          = result,
                                     isStreaming     = loadingId == result.videoId,
                                     downloadProgress = activeDownloads[result.videoId],
+                                    saved           = result.videoId in savedIds,
                                     accent          = gc.accent,
                                     onPlayClick = {
                                         // Start right away: the rest of the results queue up after it
@@ -243,6 +247,7 @@ fun SearchScreen(
                                         onSongClick(searchResults.map { it.toQueueSong() }, idx)
                                     },
                                     onDownloadClick = {
+                                        dialogAsAudiobook = false
                                         showQualityDialogFor = result
                                     },
                                 )
@@ -281,8 +286,9 @@ fun SearchScreen(
                             onPlay = { items, i -> onSongClick(viewModel.songsOf(items), i.coerceAtLeast(0)) },
                             onOpen = onOpenCollection,
                             onSearch = viewModel::searchNow,
-                            onDownload = { showQualityDialogFor = it.toSearchResult() },
+                            onDownload = { dialogAsAudiobook = it.audiobook; showQualityDialogFor = it.toSearchResult() },
                             loadingId = loadingId, playingId = playingId,
+                            downloads = activeDownloads, saved = savedIds,
                         )
                     }
                 }
@@ -294,6 +300,7 @@ fun SearchScreen(
         com.waleve.player.presentation.components.DownloadFormatSheet(
             title = result.title,
             durationSec = result.durationMs / 1000,
+            audiobook = dialogAsAudiobook,
             onDismiss = { showQualityDialogFor = null },
             onPick = { format, asAudiobook ->
                 viewModel.downloadSong(result, format, asAudiobook)
@@ -391,8 +398,10 @@ private fun SearchResultCard(
     accent: Color,
     onPlayClick: () -> Unit,
     onDownloadClick: () -> Unit,
+    saved: Boolean = false,
 ) {
     val gc = LocalGhibliColors.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Row(
         modifier = Modifier
@@ -482,6 +491,19 @@ private fun SearchResultCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(downloadProgress.status, fontSize = 9.sp, color = accent, fontWeight = FontWeight.Bold)
+                }
+            } else if (saved) {
+                Box(
+                    modifier = Modifier.springClick {
+                        android.widget.Toast.makeText(context, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.15f))
+                        .border(1.dp, accent.copy(alpha = 0.35f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.CloudDone, "Downloaded", tint = accent, modifier = Modifier.size(20.dp))
                 }
             } else {
                 Box(

@@ -37,6 +37,10 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE isHidden = 0 AND path LIKE '%/Olive/%' ORDER BY dateAdded DESC LIMIT :limit")
     fun getRecentDownloads(limit: Int = 6): Flow<List<SongEntity>>
 
+    /** YouTube ids of songs already saved on the phone (stream-only entries don't count). */
+    @Query("SELECT DISTINCT videoId FROM songs WHERE videoId IS NOT NULL AND path NOT LIKE 'ytm://%' AND path NOT LIKE 'http%'")
+    fun downloadedVideoIds(): Flow<List<String>>
+
     @Query("SELECT * FROM songs WHERE isHidden = 0 AND album = :albumName AND artist = :artistName ORDER BY trackNumber ASC, title ASC")
     fun getSongsByAlbum(albumName: String, artistName: String): Flow<List<SongEntity>>
 

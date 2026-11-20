@@ -3,14 +3,13 @@ package com.waleve.player.presentation.search
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.waleve.player.data.extractor.MediaExtractor
+import com.waleve.player.data.download.SongDownloadEvent
+import com.waleve.player.data.download.SongDownloads
 import com.waleve.player.data.extractor.MediaFormat
-import com.waleve.player.data.local.dao.SongDao
 import com.waleve.player.domain.model.SearchResult
 import com.waleve.player.domain.model.Song
 import com.waleve.player.domain.repository.AudioQuality
 import com.waleve.player.domain.repository.StreamRepository
-import com.waleve.player.domain.usecase.ScanMusicUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.FlowPreview
@@ -33,18 +32,12 @@ sealed class SearchUiEvent {
     data class DownloadComplete(val title: String) : SearchUiEvent()
 }
 
-data class DownloadProgress(
-    val videoId: String,
-    val progress: Float,  // 0-100
-    val status: String,
-)
+typealias DownloadProgress = com.waleve.player.data.download.DownloadProgress
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val streamRepository: StreamRepository,
-    private val extractor: MediaExtractor,
-    private val scanMusicUseCase: ScanMusicUseCase,
-    private val songDao: SongDao,
+    private val downloads: SongDownloads,
     @ApplicationContext private val context: Context,
     private val ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser,
 ) : ViewModel() {
@@ -116,8 +109,10 @@ class SearchViewModel @Inject constructor(
     private val _isLoadingQualities = MutableStateFlow(false)
     val isLoadingQualities: StateFlow<Boolean> = _isLoadingQualities.asStateFlow()
 
-    private val _activeDownloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
-    val activeDownloads: StateFlow<Map<String, DownloadProgress>> = _activeDownloads.asStateFlow()
+    /** Downloads waiting or running (shared by every screen, so progress shows everywhere). */
+    val activeDownloads: StateFlow<Map<String, DownloadProgress>> = downloads.active
+    /** YouTube ids already saved on the phone: rows show a tick for these. */
+    val savedIds: StateFlow<Set<String>> = downloads.saved
 
     private val _events = MutableSharedFlow<SearchUiEvent>()
     val events: SharedFlow<SearchUiEvent> = _events.asSharedFlow()
@@ -129,6 +124,17 @@ class SearchViewModel @Inject constructor(
         observeQuery()
         observeSuggestions()
         loadHome()
+        viewModelScope.launch {
+            downloads.events.collect { e ->
+                _events.emit(
+                    when (e) {
+                        is SongDownloadEvent.Queued -> SearchUiEvent.DownloadStarted(e.title)
+                        is SongDownloadEvent.Done -> SearchUiEvent.DownloadComplete(e.title)
+                        is SongDownloadEvent.Failed -> SearchUiEvent.Error("Couldn't download ${e.title}")
+                    }
+                )
+            }
+        }
     }
 
     @OptIn(FlowPreview::class)
@@ -231,96 +237,9 @@ class SearchViewModel @Inject constructor(
         qualityVideoId = null
     }
 
-    /**
-     * Download a song using yt-dlp (reuses existing MediaExtractor pipeline).
-     */
+    /** Download a song with yt-dlp. It keeps going if you leave this page. */
     fun downloadSong(result: SearchResult, chosenFormat: MediaFormat? = null, asAudiobook: Boolean = false) {
-        val category = when {
-            chosenFormat != null && !chosenFormat.isAudioOnly -> com.waleve.player.data.extractor.DownloadCategory.VIDEO
-            asAudiobook -> com.waleve.player.data.extractor.DownloadCategory.AUDIOBOOK
-            else -> com.waleve.player.data.extractor.DownloadCategory.SONG
-        }
-        val url = "https://music.youtube.com/watch?v=${result.videoId}"
-        val processId = "search_dl_${result.videoId}_${System.currentTimeMillis()}"
-
-        _activeDownloads.value = _activeDownloads.value.toMutableMap().apply {
-            put(result.videoId, DownloadProgress(result.videoId, 0f, "Starting…"))
-        }
-
-        viewModelScope.launch {
-            _events.emit(SearchUiEvent.DownloadStarted(result.title))
-
-            // Default: M4A (fast, no quality loss)
-            val format = chosenFormat ?: MediaExtractor.audioConversionChoices().first { it.extension == "m4a" }
-
-            val result2 = extractor.download(
-                url = url,
-                format = format,
-                processId = processId,
-                category = category,
-                onProgress = { progress, _, line ->
-                    val status = when {
-                        line == "SAVING_TO_LIBRARY" -> "Saving to Library…"
-                        line.startsWith("POST:") -> line.removePrefix("POST:")
-                        progress >= 99f -> "Finalizing…"
-                        else -> "${progress.toInt()}%"
-                    }
-                    _activeDownloads.value = _activeDownloads.value.toMutableMap().apply {
-                        put(result.videoId, DownloadProgress(result.videoId, progress, status))
-                    }
-                },
-            )
-
-            result2.onSuccess { downloadResult ->
-                _activeDownloads.value = _activeDownloads.value.toMutableMap().apply { remove(result.videoId) }
-                _events.emit(SearchUiEvent.DownloadComplete(result.title))
-                // Scan and then tag the new song with its videoId + thumbnail
-                scanMusicUseCase()
-                val saved = downloadResult.savedPath?.let { songDao.getSongByPath(it) }
-                if (saved != null) {
-                    songDao.updateVideoId(saved.id, result.videoId)
-                    result.thumbnailUrl?.let { songDao.updateAlbumArtUri(saved.id, it) }
-                } else {
-                    tagDownloadedSongWithVideoId(result.title, result.videoId)
-                    persistThumbnailForDownload(result.title, result.thumbnailUrl)
-                }
-            }.onFailure { err ->
-                _activeDownloads.value = _activeDownloads.value.toMutableMap().apply { remove(result.videoId) }
-                _events.emit(SearchUiEvent.Error("Download failed."))
-            }
-        }
-    }
-
-    /**
-     * After scan, find the newly-added song by title and tag it with the YouTube videoId.
-     * This enables the song to be shared as "downloadable" (not local-only) later.
-     */
-    private suspend fun tagDownloadedSongWithVideoId(title: String, videoId: String) {
-        try {
-            // Sanitize title for a fuzzy match (downloaded filename may differ slightly)
-            val cleanTitle = title.replace(Regex("[_\\-]"), " ").trim()
-            val matches = songDao.findRecentByTitle("%$cleanTitle%")
-            val target = matches.firstOrNull { it.videoId == null }
-            if (target != null) {
-                songDao.updateVideoId(target.id, videoId)
-            }
-        } catch (_: Exception) { /* best-effort */ }
-    }
-
-    /**
-     * Persist the YouTube thumbnail URL as the song's albumArtUri so
-     * thumbnails appear in the library, now playing, mini player, etc.
-     */
-    private suspend fun persistThumbnailForDownload(title: String, thumbnailUrl: String?) {
-        if (thumbnailUrl.isNullOrEmpty()) return
-        try {
-            val cleanTitle = title.replace(Regex("[_\\-]"), " ").trim()
-            val matches = songDao.findRecentByTitle("%$cleanTitle%")
-            val target = matches.firstOrNull()
-            if (target != null) {
-                songDao.updateAlbumArtUri(target.id, thumbnailUrl)
-            }
-        } catch (_: Exception) { /* best-effort */ }
+        downloads.start(result, chosenFormat, asAudiobook)
     }
 }
 

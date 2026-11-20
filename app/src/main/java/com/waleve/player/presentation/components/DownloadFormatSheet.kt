@@ -62,9 +62,11 @@ fun DownloadFormatSheet(
     durationSec: Long,
     onPick: (format: MediaFormat, asAudiobook: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    /** Start on "Audiobook" (e.g. it came from the Audiobooks shelf). Long items do anyway. */
+    audiobook: Boolean = false,
 ) {
     val gc = LocalGhibliColors.current
-    var asAudiobook by remember(title) { mutableStateOf(durationSec >= 40 * 60) }
+    var asAudiobook by remember(title) { mutableStateOf(audiobook || durationSec >= 40 * 60) }
     val audio = remember(durationSec) { MediaExtractor.audioConversionChoices(durationSec) }
     val video = remember(durationSec) { MediaExtractor.videoChoices(durationSec, maxHeight = 2160) }
 
