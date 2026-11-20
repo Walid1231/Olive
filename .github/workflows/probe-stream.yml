@@ -4,10 +4,14 @@ jobs:
   p:
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - shell: bash {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          H="Authorization: Bearer $GH_TOKEN"
           echo "=== NewPipeExtractor releases"
-          curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases?per_page=3 | grep -E '"tag_name"|"published_at"'
-          TAG=$(curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+          curl -s -H "$H" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases?per_page=3 | grep -E '"tag_name"|"published_at"'
+          TAG=$(curl -s -H "$H" https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
           echo "TAG=$TAG"
           B=https://raw.githubusercontent.com/TeamNewPipe/NewPipeExtractor/$TAG/extractor/src/main/java/org/schabi/newpipe/extractor
           echo "=== Response.java"; curl -s $B/downloader/Response.java | grep -nE "public Response\(|final (int|String|Map|byte)" | head
