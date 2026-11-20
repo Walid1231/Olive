@@ -1,4 +1,14 @@
-## Olive 1.5.8 · Safer Listen Together + live streaming
+## Olive 1.5.9 · Online songs start faster, without errors
+
+- **Instant queue:** tapping a song no longer waits while Olive finds every song's link first. Each link is fetched only when it's needed, and the next song's link is fetched while the current one plays, so it starts with no gap.
+- **Search results are ready before you tap:** the top results' links are fetched as soon as results appear.
+- **Links are remembered for ~6 hours,** even after closing the app.
+- **Starts sooner:** playback begins with less buffering.
+- **Cached:** songs you streamed recently (up to 300 MB) replay and seek instantly.
+- **No more "Couldn't play":** an expired or refused link is replaced quietly, first with a fresh link and then through yt-dlp. If a song truly isn't available, Olive skips to the next one.
+- **No internet?** Olive waits and continues when you're back online.
+
+## Olive 1.5.8 (previous) · Safer Listen Together + live streaming
 
 ### 🔒 Security fixes (update every friend's phone)
 - A guest can no longer make the host's phone upload its private files. Links from other people are checked: only Olive's own sharing storage and YouTube ids are accepted, and only real songs in your music folders can ever be uploaded.
