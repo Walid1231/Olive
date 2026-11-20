@@ -10,7 +10,6 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.TransferListener
@@ -87,6 +86,24 @@ class StreamEngine(
             return spec.withAdditionalHeaders(h)
         }
         return spec
+    }
+
+    /** Tells the engine when a link is refused, so the retry fetches a different one. */
+    private inner class ReportingDataSource(private val up: DataSource) : DataSource {
+        override fun addTransferListener(transferListener: TransferListener) = up.addTransferListener(transferListener)
+        override fun open(dataSpec: DataSpec): Long {
+            val id = dataSpec.customData as? String
+            try {
+                return up.open(dataSpec).also { if (id != null) worked(id) }
+            } catch (e: HttpDataSource.InvalidResponseCodeException) {
+                if (id != null) failed(id)
+                throw e
+            }
+        }
+        override fun read(buffer: ByteArray, offset: Int, length: Int) = up.read(buffer, offset, length)
+        override fun getUri(): Uri? = up.uri
+        override fun getResponseHeaders(): Map<String, List<String>> = up.responseHeaders
+        override fun close() = up.close()
     }
 
     // OkHttp (shared connections, IPv4 first) — connects to YouTube's servers faster than the default stack
