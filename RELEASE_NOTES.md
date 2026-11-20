@@ -1,4 +1,10 @@
-## Olive 1.5.9 · Online songs start faster, without errors
+## Olive 1.5.10 · No more cut-off labels
+
+- **Library:** "Songs | Audiobooks" always shows the full words. With a big system font size, the text shrinks a little to fit instead of being cut off.
+- **Friends:** "Inbox | Friends | Requests" shows full names, and the numbers now sit in small round badges (a badge only appears when there's something to show).
+- The download sheet's "Song / Audiobook" cards get the same fix.
+
+## Olive 1.5.9 (previous) · Online songs start faster, without errors
 
 - **Instant queue:** tapping a song no longer waits while Olive finds every song's link first. Each link is fetched only when it's needed, and the next song's link is fetched while the current one plays, so it starts with no gap.
 - **Search results are ready before you tap:** the top results' links are fetched as soon as results appear.
