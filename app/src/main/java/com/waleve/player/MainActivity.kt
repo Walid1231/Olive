@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var headsetBattery: com.waleve.player.service.HeadsetBatteryMonitor
 
+    @Inject
+    lateinit var librarySync: com.waleve.player.data.social.LibrarySync
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -64,6 +67,7 @@ class MainActivity : ComponentActivity() {
         }
         com.waleve.player.widget.OliveWidget.watch(this, playbackController)
         headsetBattery.start()
+        librarySync.start()
 
         setContent {
             WaLeveAppContent()

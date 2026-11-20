@@ -44,6 +44,11 @@ service cloud.firestore {
           && request.resource.data.get('friendCount', 0) == resource.data.get('friendCount', 0) - 1;
       }
 
+      // My library copy for Olive on PC: only me
+      match /library/{docId} {
+        allow read, write: if signedIn() && me() == uid;
+      }
+
       // Inbox: friend requests from anyone (backed by a real request), everything else
       // (shares, invites, reactions, "accepted") only from friends. Names can't be faked.
       match /inbox/{notifId} {

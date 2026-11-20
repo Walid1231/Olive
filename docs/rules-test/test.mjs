@@ -103,6 +103,12 @@ await t("my incoming requests query ok", () => assertSucceeds(getDocs(query(coll
 await t("my outgoing requests query ok", () => assertSucceeds(getDocs(query(collection(db("eve"), "friendRequests"), where("fromUid", "==", "eve"), where("status", "==", "PENDING")))));
 await t("sender can't mark own request accepted", () => assertFails(updateDoc(doc(db("eve"), "friendRequests/r9"), { status: "ACCEPTED" })));
 
+console.log("Library (PC sync)");
+await t("I write my library", () => assertSucceeds(setDoc(doc(db("alice"), "users/alice/library/favorites"), { name: "Liked songs", tracks: [] })));
+await t("I read my library", () => assertSucceeds(getDoc(doc(db("alice"), "users/alice/library/favorites"))));
+await t("friend can't read my library", () => assertFails(getDoc(doc(db("bob"), "users/alice/library/favorites"))));
+await t("nobody else writes my library", () => assertFails(setDoc(doc(db("eve"), "users/alice/library/x"), { name: "spam" })));
+
 console.log("Presence & transfers");
 await seed();
 await t("friend sees presence", () => assertSucceeds(getDoc(doc(db("bob"), "presence/alice"))));
