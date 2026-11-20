@@ -116,7 +116,8 @@ class AppUpdateChecker @Inject constructor(
             }
         }.getOrDefault(0L)
         val notes = runCatching {
-            okHttpClient.newCall(Request.Builder().url("https://raw.githubusercontent.com/$repo/$tag/RELEASE_NOTES.md").build()).execute().use {
+            // main always holds the latest release's short notes
+            okHttpClient.newCall(Request.Builder().url("https://raw.githubusercontent.com/$repo/main/RELEASE_NOTES.md").build()).execute().use {
                 if (it.isSuccessful) it.body?.string().orEmpty() else ""
             }
         }.getOrDefault("")
