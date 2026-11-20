@@ -190,10 +190,6 @@ dependencies {
 
     // YoutubeDL (yt-dlp + FFmpeg for stream extraction & transcoding)
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
-    // Fast YouTube links: NewPipe decodes the TV clients' signatures (protobuf comes from Firebase)
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1") {
-        exclude(group = "com.google.protobuf")
-    }
     // ExoPlayer over OkHttp: shared connections, IPv4 first
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
     // Live Listen Together (WebRTC)

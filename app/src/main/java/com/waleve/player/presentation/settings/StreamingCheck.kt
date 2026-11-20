@@ -90,7 +90,7 @@ class StreamingCheckViewModel @Inject constructor(
     }
 
     companion object {
-        val METHODS = listOf("visionos", "tv_samsung", "tv", "android_vr", "yt-dlp")
+        val METHODS = listOf("visionos", "android_vr", "yt-dlp")
         private const val TEST_VIDEO = "kJQP7kiw5Fk"
         fun label(via: String?) = when (via) {
             "visionos" -> "Vision Pro link"

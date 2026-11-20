@@ -36,12 +36,11 @@ import javax.inject.Singleton
  * YouTube now wants a "PO token" for the Android VR client Olive used before, so those links
  * failed and every song fell back to yt-dlp (20–40 s on a phone). Now several methods run
  * at the same time and the first link that really answers wins:
- *  • visionos   — Apple Vision Pro client: direct links, no token, no JavaScript
- *  • tv_samsung — Samsung TV client: links decoded with NewPipe (≈1 s)
- *  • tv         — YouTube TV client: same, different client
- *  • android_vr — kept in case it works for some songs
+ *  • visionos   — Apple Vision Pro client: direct links, no token, no JavaScript (what
+ *                 yt-dlp itself uses when it can't run JavaScript)
+ *  • android_vr — kept in case it still works for some songs
  *  • yt-dlp     — joins after 2.5 s only if nothing worked yet (or right away if the fast
- *                 ones have been failing on this network)
+ *                 ones have been failing on this network); it keeps a cache so it gets faster
  * Each link is checked with a tiny 1 KB request before it's used.
  */
 @Singleton
@@ -80,23 +79,12 @@ class StreamResolver @Inject constructor(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
         mapOf("deviceMake" to "Apple", "deviceModel" to "RealityDevice17,1", "osName" to "visionOS", "osVersion" to "26.5.23O471"),
     )
-    private val tvSamsung = Client(
-        "tv_samsung", "TVHTML5", "5.20260707", 7,
-        "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1",
-        mapOf("deviceMake" to "Samsung", "deviceModel" to "UKS9800", "osName" to "Tizen", "osVersion" to "2.4.0"),
-        needsJs = true,
-    )
-    private val tv = Client(
-        "tv", "TVHTML5", "7.20260707.07.00", 7,
-        "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
-        needsJs = true,
-    )
     private val androidVr = Client(
         "android_vr", "ANDROID_VR", "1.65.10", 28,
         "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
         mapOf("deviceMake" to "Oculus", "deviceModel" to "Quest 3", "androidSdkVersion" to 32, "osName" to "Android", "osVersion" to "12L"),
     )
-    private val clients = listOf(visionos, tvSamsung, tv, androidVr)
+    private val clients = listOf(visionos, androidVr)
 
     /** Headers for links we handed out (so links stored in songs still play with the right headers). */
     private val headersByUrl = object : LinkedHashMap<String, Map<String, String>>(64, 0.75f, true) {
@@ -110,14 +98,13 @@ class StreamResolver @Inject constructor(
 
     @Volatile private var warmed = false
 
-    /** Start NewPipe and fetch YouTube's player code in the background, so the first song is fast. */
+    /** Open the connection to YouTube in the background, so the first song skips the handshake. */
     suspend fun warmUp() = withContext(Dispatchers.IO) {
         if (warmed) return@withContext
         warmed = true
         runCatching {
-            NewPipeBridge.init(api)
-            NewPipeBridge.signatureTimestamp(WARM_VIDEO)
-        }.onFailure { Log.w(TAG, "NewPipe warm-up failed", it) }
+            api.newCall(Request.Builder().url("https://www.youtube.com/generate_204").head().build()).execute().close()
+        }
     }
 
     private val visitorData: String?
@@ -125,17 +112,13 @@ class StreamResolver @Inject constructor(
 
     // ── One method ────────────────────────────────────────────────────────────
 
-    private fun player(c: Client, videoId: String, sts: Int?): JSONObject {
+    private fun player(c: Client, videoId: String): JSONObject {
         val client = JSONObject().put("clientName", c.name).put("clientVersion", c.version).put("hl", "en").put("gl", "US")
         c.extra.forEach { (k, v) -> client.put(k, v) }
         visitorData?.let { client.put("visitorData", it) }
         val body = JSONObject()
             .put("context", JSONObject().put("client", client))
             .put("videoId", videoId).put("contentCheckOk", true).put("racyCheckOk", true)
-        if (sts != null) {
-            body.put("playbackContext", JSONObject().put("contentPlaybackContext",
-                JSONObject().put("signatureTimestamp", sts).put("html5Preference", "HTML5_PREF_WANTS")))
-        }
         val req = Request.Builder()
             .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
             .post(body.toString().toRequestBody(jsonType))
@@ -153,18 +136,8 @@ class StreamResolver @Inject constructor(
         }
     }
 
-    private fun buildUrl(c: Client, videoId: String, f: JSONObject): String? {
-        f.optString("url").takeIf { it.isNotBlank() }?.let { u ->
-            return if (c.needsJs) NewPipeBridge.unthrottle(videoId, u) else u
-        }
-        val cipher = f.optString("signatureCipher").ifBlank { f.optString("cipher") }.takeIf { it.isNotBlank() } ?: return null
-        val q = Uri.parse("?$cipher")
-        val s = q.getQueryParameter("s") ?: return null
-        val base = q.getQueryParameter("url") ?: return null
-        val sp = q.getQueryParameter("sp") ?: "signature"
-        val signed = Uri.parse(base).buildUpon().appendQueryParameter(sp, NewPipeBridge.decipher(videoId, s)).build().toString()
-        return NewPipeBridge.unthrottle(videoId, signed)
-    }
+    /** Direct links only (these clients don't need YouTube's player code). */
+    private fun buildUrl(f: JSONObject): String? = f.optString("url").takeIf { it.isNotBlank() }
 
     /** Does the link really give audio? (asks for the first 1 KB) */
     private fun works(url: String, headers: Map<String, String>): Boolean {
@@ -174,11 +147,7 @@ class StreamResolver @Inject constructor(
     }
 
     private fun viaClient(c: Client, videoId: String): StreamLink {
-        val sts = if (c.needsJs) {
-            NewPipeBridge.init(api)
-            NewPipeBridge.signatureTimestamp(videoId) ?: throw IOException("player code unavailable")
-        } else null
-        val j = player(c, videoId, sts)
+        val j = player(c, videoId)
         val ps = j.optJSONObject("playabilityStatus")
         val status = ps?.optString("status").orEmpty()
         if (status != "OK") throw IOException(listOf(status, ps?.optString("reason")).filter { !it.isNullOrBlank() }.joinToString(": ").ifBlank { "not playable" })
@@ -191,7 +160,7 @@ class StreamResolver @Inject constructor(
         if (audio.isEmpty()) throw IOException("no audio")
         val headers = c.playHeaders
         for (f in audio.take(2)) {
-            val url = buildUrl(c, videoId, f) ?: continue
+            val url = buildUrl(f) ?: continue
             if (works(url, headers)) {
                 val expire = Uri.parse(url).getQueryParameter("expire")?.toLongOrNull()?.times(1000)
                     ?: (System.currentTimeMillis() + 5 * 3_600_000L)
@@ -202,7 +171,8 @@ class StreamResolver @Inject constructor(
     }
 
     private suspend fun viaYtDlp(videoId: String): StreamLink {
-        val (url, h) = extractor.extractStreamLink(videoId) ?: throw IOException("yt-dlp found nothing")
+        val skipVisionos = stats.getInt("fails_visionos", 0) >= 2
+        val (url, h) = extractor.extractStreamLink(videoId, skipVisionos) ?: throw IOException("yt-dlp found nothing")
         val headers = h.filterKeys { it.equals("User-Agent", true) || it.equals("Origin", true) || it.equals("Referer", true) }
         val expire = Uri.parse(url).getQueryParameter("expire")?.toLongOrNull()?.times(1000)
             ?: (System.currentTimeMillis() + 5 * 3_600_000L)

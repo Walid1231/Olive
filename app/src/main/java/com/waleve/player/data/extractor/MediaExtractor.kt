@@ -165,9 +165,14 @@ class MediaExtractor @Inject constructor(
      * fast); if that fails, yt-dlp's own default clients (slower: they need JavaScript).
      * Each way is tried once (an old bug ran every failing attempt twice).
      */
-    private fun <T> runYouTube(url: String, build: (YoutubeDLRequest) -> Unit, exec: (YoutubeDLRequest) -> T): T {
+    private fun <T> runYouTube(
+        url: String,
+        build: (YoutubeDLRequest) -> Unit,
+        clients: List<String?> = listOf("visionos", null),
+        exec: (YoutubeDLRequest) -> T,
+    ): T {
         var last: Exception? = null
-        for (client in listOf("visionos", null)) {
+        for (client in clients) {
             var tries = 0
             while (tries < 2) {
                 tries++
@@ -199,7 +204,7 @@ class MediaExtractor @Inject constructor(
      * Stream link + the headers YouTube expects, via yt-dlp. Cancelling the coroutine stops
      * the yt-dlp process (the fast methods usually win long before this finishes).
      */
-    suspend fun extractStreamLink(videoId: String): Pair<String, Map<String, String>>? = withContext(Dispatchers.IO) {
+    suspend fun extractStreamLink(videoId: String, skipVisionos: Boolean = false): Pair<String, Map<String, String>>? = withContext(Dispatchers.IO) {
         initialize()
         ensureUpdated()
         val pid = "stream_${videoId}_${System.nanoTime()}"
@@ -210,7 +215,7 @@ class MediaExtractor @Inject constructor(
                     r.addOption("--no-playlist")
                     r.addOption("--print", "%(http_headers)j")
                     r.addOption("--print", "%(url)s")
-                }) { YoutubeDL.getInstance().execute(it, pid).out }
+                }, clients = if (skipVisionos) listOf(null) else listOf("visionos", null)) { YoutubeDL.getInstance().execute(it, pid).out }
             }
             val lines = out.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val url = lines.lastOrNull { it.startsWith("http") } ?: return@withContext null
@@ -239,7 +244,7 @@ class MediaExtractor @Inject constructor(
             initialize()
             ensureUpdated() // Update to latest yt-dlp to bypass YouTube anti-bot
 
-            val info: VideoInfo = runYouTube(url, {}, { YoutubeDL.getInstance().getInfo(it) })
+            val info: VideoInfo = runYouTube(url, {}) { YoutubeDL.getInstance().getInfo(it) }
 
             val title = info.title ?: "Unknown"
             val artist = info.uploader ?: "Unknown Artist"
