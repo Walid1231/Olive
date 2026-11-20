@@ -1,0 +1,35 @@
+name: probe stream
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "=== NewPipeExtractor releases"
+          curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases?per_page=3 | grep -E '"tag_name"|"published_at"'
+          TAG=$(curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+          echo "TAG=$TAG"
+          B=https://raw.githubusercontent.com/TeamNewPipe/NewPipeExtractor/$TAG/extractor/src/main/java/org/schabi/newpipe/extractor
+          echo "=== Response.java"; curl -s $B/downloader/Response.java | grep -nE "public Response\(|final (int|String|Map|byte)" | head
+          echo "=== Downloader.java"; curl -s $B/downloader/Downloader.java | grep -nE "public abstract|public Response" | head
+          echo "=== Request.java"; curl -s $B/downloader/Request.java | grep -nE "public [A-Za-z<>\[\], ]+ [a-zA-Z]+\(\)" | head -12
+          echo "=== NewPipe.java"; curl -s $B/NewPipe.java | grep -nE "public static void init" | head
+          echo "=== YoutubeJavaScriptPlayerManager"; curl -s $B/services/youtube/YoutubeJavaScriptPlayerManager.java | grep -nE "public static" | head
+          echo "=== ReCaptchaException"; curl -s $B/exceptions/ReCaptchaException.java | grep -nE "public ReCaptchaException" | head
+          echo "=== jitpack"; curl -s -o /dev/null -w '%{http_code}\n' "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/$TAG/NewPipeExtractor-$TAG.pom"
+          curl -s "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/$TAG/NewPipeExtractor-$TAG.pom" | head -60 | grep -E "artifactId|version|groupId" | head -20
+          echo "=== yt-dlp clients"
+          curl -s https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/_base.py -o base.py
+          python3 - <<'PY'
+          import re
+          s=open('base.py').read()
+          start=s.find('INNERTUBE_CLIENTS')
+          block=s[start:start+20000]
+          for name in ['android_vr','tv','tv_simply','tv_embedded','ios','android','android_sdkless','web_safari','mweb','web_music']:
+              m=re.search(r"\n    '"+name+r"': \{(.*?)\n    \},", block, re.S)
+              if m:
+                  body=m.group(1)
+                  keep=[l.strip() for l in body.split('\n') if re.search(r"clientName|clientVersion|userAgent|deviceMake|deviceModel|osVersion|androidSdkVersion|CONTEXT_CLIENT_NAME|REQUIRE_JS_PLAYER|PO_TOKEN|SUPPORTS_COOKIES|osName", l)]
+                  print('---',name); print('\n'.join(keep[:14]))
+          PY
+          echo "=== default clients"; grep -nE "_DEFAULT_CLIENTS|_DEFAULT_AUTHED_CLIENTS|_DEFAULT_PREMIUM" -A3 <(curl -s https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/_video.py) | head -20
