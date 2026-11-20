@@ -1,4 +1,22 @@
-## Olive 1.5.7 · Lyrics that move with the song + Now Playing fits every screen
+## Olive 1.5.8 · Safer Listen Together + live streaming
+
+### 🔒 Security fixes (update every friend's phone)
+- A guest can no longer make the host's phone upload its private files. Links from other people are checked: only Olive's own sharing storage and YouTube ids are accepted, and only real songs in your music folders can ever be uploaded.
+- Session chat and session details are visible only to the host and invited friends (before, anyone signed in could read them).
+- Guests can only add or remove themselves. They can't kick others, rename people or change the song.
+- Fake names are blocked in chat, commands and notifications. Commands are limited to about 2 per second.
+- Invites, shares and listen-along only come from friends. Friend requests need a real request.
+- What you're playing is visible only to friends (it used to be on your public profile).
+- Nobody can add themselves to your friend list without your accept.
+- Uploads and deletes go through a server that checks your Olive login. Anonymous upload, delete and file listing are turned off.
+- Ending a session removes it and its chat from the cloud.
+
+### 📡 Live stream (new, in Listen Together)
+- The host turns on **Live stream**. Friends hear exactly what the host's phone plays, about ⅓ second later: no downloading, no uploading, perfect sync, and local files work too.
+- Turn it off to go back to the normal mode.
+- Android shows the mic dot while you're live. Olive sends only the music, never your voice.
+
+## Olive 1.5.7 (previous) · Lyrics that move with the song + Now Playing fits every screen
 
 ### 🎤 Lyrics
 - Synced lyrics now flow with the music: the line being sung stays near the middle, gets a little bigger, and its colour fills in word by word like karaoke.
