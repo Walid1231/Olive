@@ -162,7 +162,7 @@ class FriendRepositoryImpl @Inject constructor(
         firestore.batch().apply {
             update(requestsCol.document(requestId), mapOf("status" to "ACCEPTED", "respondedAt" to now))
             set(usersCol.document(uid), mapOf("friendIds" to FieldValue.arrayUnion(fromUid), "friendCount" to FieldValue.increment(1)), SetOptions.merge())
-            update(usersCol.document(fromUid), mapOf("friendIds" to FieldValue.arrayUnion(uid), "friendCount" to FieldValue.increment(1)))
+            update(usersCol.document(fromUid), mapOf("friendIds" to FieldValue.arrayUnion(uid), "friendCount" to FieldValue.increment(1), "lastAcceptedRequest" to requestId))
             set(notifRef, mapOf(
                 "notifId" to notifRef.id, "type" to "FRIEND_ACCEPTED", "fromUid" to uid, "fromName" to myName,
                 "fromAvatar" to (me.getString("avatarUrl") ?: ""), "requestId" to requestId, "sentAt" to now, "isRead" to false,
@@ -266,25 +266,25 @@ class FriendRepositoryImpl @Inject constructor(
                             notifId      = doc.getString("notifId") ?: doc.id,
                             type         = type,
                             fromUid      = doc.getString("fromUid") ?: "",
-                            fromName     = doc.getString("fromName") ?: "Unknown",
-                            fromAvatar   = doc.getString("fromAvatar")?.takeIf { it.isNotBlank() },
+                            fromName     = doc.getString("fromName")?.take(60) ?: "Unknown",
+                            fromAvatar   = com.waleve.player.domain.model.RemoteTrack.safeHttps(doc.getString("fromAvatar")),
                             shareId      = doc.getString("shareId"),
                             playlistName = doc.getString("playlistName"),
                             songTitle    = doc.getString("songTitle"),
-                            thumbnailUrl = doc.getString("thumbnailUrl")?.takeIf { it.isNotBlank() },
-                            videoId      = doc.getString("videoId"),
+                            thumbnailUrl = com.waleve.player.domain.model.RemoteTrack.safeHttps(doc.getString("thumbnailUrl")),
+                            videoId      = com.waleve.player.domain.model.RemoteTrack.safeVideoId(doc.getString("videoId")),
                             requestId    = doc.getString("requestId"),
                             sentAt       = doc.getLong("sentAt") ?: 0L,
                             isRead       = doc.getBoolean("isRead") ?: false,
                             artist       = doc.getString("artist"),
                             durationMs   = doc.getLong("durationMs") ?: 0L,
                             mediaType    = doc.getString("mediaType") ?: "music",
-                            fileUrl      = doc.getString("fileUrl"),
+                            fileUrl      = com.waleve.player.domain.model.RemoteTrack.safeFileUrl(doc.getString("fileUrl")),
                             fileName     = doc.getString("fileName"),
                             mimeType     = doc.getString("mimeType"),
                             fileSize     = doc.getLong("fileSize") ?: 0L,
                             reaction     = doc.getString("reaction"),
-                            message      = doc.getString("message")?.takeIf { it.isNotBlank() },
+                            message      = doc.getString("message")?.take(200)?.takeIf { it.isNotBlank() },
                             myReaction   = doc.getString("myReaction"),
                             transferId   = doc.getString("transferId"),
                             savedPath    = doc.getString("savedPath"),
@@ -383,7 +383,7 @@ class FriendRepositoryImpl @Inject constructor(
                 runCatching {
                     val t = firestore.collection("transfers").document()
                     t.set(mapOf(
-                        "fromUid" to uid, "url" to fileUrl, "pending" to friendUids.distinct(),
+                        "fromUid" to uid, "url" to fileUrl, "pending" to friendUids.distinct(), "recipients" to friendUids.distinct(),
                         "title" to song.title, "createdAt" to System.currentTimeMillis(),
                     )).await()
                     transferId = t.id

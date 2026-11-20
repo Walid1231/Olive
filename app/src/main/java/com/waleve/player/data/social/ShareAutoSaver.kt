@@ -79,7 +79,7 @@ class ShareAutoSaver @Inject constructor(
             .addSnapshotListener { snap, _ ->
                 if (!_enabled.value) return@addSnapshotListener
                 val todo = snap?.documents.orEmpty().filter { d ->
-                    d.getString("fileUrl") != null && d.getString("savedPath") == null &&
+                    com.waleve.player.domain.model.RemoteTrack.safeFileUrl(d.getString("fileUrl")) != null && d.getString("savedPath") == null &&
                         d.getBoolean("saveFailed") != true && d.id !in tried
                 }
                 todo.forEach { d -> tried += d.id; scope.launch { save(me, d) } }
@@ -87,10 +87,11 @@ class ShareAutoSaver @Inject constructor(
     }
 
     private suspend fun save(me: String, d: DocumentSnapshot) = lock.withLock {
-        val url = d.getString("fileUrl") ?: return@withLock
+        // Only files from Olive's sharing storage, never arbitrary links
+        val url = com.waleve.player.domain.model.RemoteTrack.safeFileUrl(d.getString("fileUrl")) ?: return@withLock
         val title = d.getString("songTitle") ?: "Shared song"
         val audiobook = d.getString("mediaType") == "audiobook"
-        val name = d.getString("fileName") ?: "$title.${d.getString("mimeType")?.substringAfter('/') ?: "mp3"}"
+        val name = (d.getString("fileName") ?: "$title.${d.getString("mimeType")?.substringAfter('/') ?: "mp3"}").take(150)
         val ref = d.reference
         _saving.update { it + (d.id to 0f) }
         try {
@@ -108,7 +109,7 @@ class ShareAutoSaver @Inject constructor(
             if (saved == null) { tried -= d.id; return@withLock }
             runCatching { scanMusic() }
             songDao.getSongByPath(saved)?.let { song ->
-                d.getString("thumbnailUrl")?.takeIf { it.isNotBlank() }?.let { songDao.updateAlbumArtUri(song.id, it) }
+                com.waleve.player.domain.model.RemoteTrack.safeHttps(d.getString("thumbnailUrl"))?.let { songDao.updateAlbumArtUri(song.id, it) }
             }
             runCatching { ref.update(mapOf("savedPath" to saved, "savedAt" to System.currentTimeMillis())).await() }
             d.getString("transferId")?.let { finishTransfer(me, it) }

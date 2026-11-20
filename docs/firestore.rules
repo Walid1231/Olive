@@ -1,107 +1,188 @@
 rules_version = '2';
-// Olive — Firestore security rules.
+// Olive — Firestore security rules (v2, Nov 2026 hardening).
 // Paste into Firebase console → Firestore Database → Rules → Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function userDoc(uid) { return get(/databases/$(database)/documents/users/$(uid)); }
+    function friendsOf(uid) { return userDoc(uid).data.get('friendIds', []); }
+    function friendsAfter(uid) {
+      return getAfter(/databases/$(database)/documents/users/$(uid)).data.get('friendIds', []);
+    }
+    // A name someone writes about themselves must be their profile name
+    function myName(claimed) { return claimed == userDoc(me()).data.get('displayName', claimed); }
+    function onlyKeys(data, keys) { return data.keys().hasOnly(keys); }
+    function str(v, max) { return v is string && v.size() <= max; }
 
-    // Profiles: any signed-in user can read (needed for friend search by name / email / code).
-    // You can edit your own profile. Others may only add/remove THEMSELVES in your friend list
-    // (that's what accepting / removing a friend does).
+    // ── Profiles ───────────────────────────────────────────────────────────────
+    // Readable by signed-in users (friend search). Others may only add THEMSELVES to your
+    // friend list with an ACCEPTED request from you, or remove themselves.
     match /users/{uid} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && (
-        request.auth.uid == uid ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount']) &&
-          // someone else may only add or remove THEMSELVES
-          request.resource.data.get('friendIds', []).toSet()
-            .difference(resource.data.get('friendIds', []).toSet()).hasOnly([request.auth.uid]) &&
-          resource.data.get('friendIds', []).toSet()
-            .difference(request.resource.data.get('friendIds', []).toSet()).hasOnly([request.auth.uid])
-        )
-      );
-      allow delete: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && me() == uid;
+      allow delete: if signedIn() && me() == uid;
+      allow update: if signedIn() && (me() == uid || friendSelfAdd(uid) || friendSelfRemove(uid));
 
-      // Inbox: friend requests + shared songs / audiobooks / playlists.
-      // Anyone signed in can drop a notification in; only the owner reads / marks / deletes.
+      function addedIds(uid) {
+        return request.resource.data.get('friendIds', []).toSet().difference(resource.data.get('friendIds', []).toSet());
+      }
+      function removedIds(uid) {
+        return resource.data.get('friendIds', []).toSet().difference(request.resource.data.get('friendIds', []).toSet());
+      }
+      function friendSelfAdd(uid) {
+        let req = getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.lastAcceptedRequest));
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount', 'lastAcceptedRequest'])
+          && addedIds(uid) == [me()].toSet() && removedIds(uid).size() == 0
+          && req.data.fromUid == uid && req.data.toUid == me() && req.data.status == 'ACCEPTED'
+          && request.resource.data.get('friendCount', 0) == resource.data.get('friendCount', 0) + 1;
+      }
+      function friendSelfRemove(uid) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friendIds', 'friendCount'])
+          && removedIds(uid) == [me()].toSet() && addedIds(uid).size() == 0
+          && request.resource.data.get('friendCount', 0) == resource.data.get('friendCount', 0) - 1;
+      }
+
+      // Inbox: friend requests from anyone (backed by a real request), everything else
+      // (shares, invites, reactions, "accepted") only from friends. Names can't be faked.
       match /inbox/{notifId} {
-        allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
-        allow read, update, delete: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn()
+          && request.resource.data.fromUid == me() && me() != uid
+          && myName(request.resource.data.get('fromName', ''))
+          && (
+            (request.resource.data.type == 'FRIEND_REQUEST'
+              && getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.fromUid == me()
+              && getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.toUid == uid)
+            || me() in friendsAfter(uid)
+          );
+        allow read, update, delete: if signedIn() && me() == uid;
       }
     }
 
-    // Friend requests between two people
+    // ── What I'm playing: only my friends can see it ───────────────────────────
+    match /presence/{uid} {
+      allow read: if signedIn() && (me() == uid || me() in friendsOf(uid));
+      allow write: if signedIn() && me() == uid;
+    }
+
+    // ── Friend requests: only the two people involved ──────────────────────────
     match /friendRequests/{reqId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
-      allow update: if signedIn() && request.auth.uid in [resource.data.fromUid, resource.data.toUid];
-      allow delete: if signedIn() && request.auth.uid == resource.data.fromUid;
+      allow read: if signedIn() && (me() == resource.data.fromUid || me() == resource.data.toUid);
+      allow create: if signedIn()
+        && request.resource.data.fromUid == me() && request.resource.data.toUid != me()
+        && request.resource.data.status == 'PENDING'
+        && myName(request.resource.data.get('fromName', ''));
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt'])
+        && resource.data.status == 'PENDING'
+        && (
+          (me() == resource.data.toUid && request.resource.data.status in ['ACCEPTED', 'DECLINED']) ||
+          (me() == resource.data.fromUid && request.resource.data.status == 'CANCELLED')
+        );
+      allow delete: if signedIn() && me() in [resource.data.fromUid, resource.data.toUid];
     }
 
-    // Listen Together sessions (doc id = host uid). The host writes everything;
-    // invited friends may only add / remove themselves in members + memberNames.
+    // ── Listen Together (doc id = host uid) ────────────────────────────────────
     match /sessions/{hostUid} {
-      allow read: if signedIn();
-      allow create, delete: if signedIn() && request.auth.uid == hostUid;
-      allow update: if signedIn() && (
-        request.auth.uid == hostUid ||
-        (
-          request.auth.uid in resource.data.invited &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
-        ) ||
-        (
-          // "Everyone can control": guests may only send a command
-          request.auth.uid in resource.data.members &&
-          resource.data.get('openControl', false) == true &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['command'])
-        )
-      );
+      function sessionShapeOk(isNew) {
+        let d = request.resource.data;
+        return d.hostUid == hostUid
+          && d.invited is list && d.invited.size() <= 30
+          // only friends can be invited (checked when the list changes)
+          && ((!isNew && d.invited == resource.data.invited)
+              || d.invited.toSet().difference(friendsOf(hostUid).toSet()).size() == 0)
+          && d.members is list
+          && d.members.toSet().difference(d.invited.toSet().union([hostUid].toSet())).size() == 0
+          && str(d.get('hostName', ''), 60);
+      }
+      function guestJoinLeave() {
+        let added = request.resource.data.members.toSet().difference(resource.data.members.toSet());
+        let removed = resource.data.members.toSet().difference(request.resource.data.members.toSet());
+        let names = request.resource.data.get('memberNames', {});
+        return me() in resource.data.invited
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
+          && names.diff(resource.data.get('memberNames', {})).affectedKeys().hasOnly([me()])
+          && (
+            ((added == [me()].toSet() || (added.size() == 0 && me() in resource.data.members))
+              && removed.size() == 0 && resource.data.active == true
+              && str(names[me()], 60) && myName(names[me()])) ||
+            (removed == [me()].toSet() && added.size() == 0 && !(me() in names))
+          );
+      }
+      function guestCommand() {
+        let c = request.resource.data.command;
+        return me() != hostUid && me() in resource.data.members
+          && resource.data.get('openControl', false) == true && resource.data.active == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['command'])
+          && c.keys().hasOnly(['id', 'type', 'by', 'byName', 'at', 'sentAt', 'positionMs', 'track'])
+          && c.by == me() && c.byName == resource.data.memberNames[me()]
+          && c.type in ['play', 'pause', 'seek', 'next', 'prev', 'track']
+          && c.sentAt == request.time
+          // at most ~2 commands a second
+          && (!('command' in resource.data) || !('sentAt' in resource.data.command)
+              || request.time > resource.data.command.sentAt + duration.value(500, 'ms'));
+      }
 
-      // Chat relay: messages are stored on the phones; the host deletes these when the session ends
+      allow read: if signedIn() && (me() == hostUid || me() in resource.data.invited);
+      allow create: if signedIn() && me() == hostUid && sessionShapeOk(true)
+        && request.resource.data.members == [hostUid]
+        && myName(request.resource.data.get('hostName', ''));
+      allow update: if signedIn() && (
+        (me() == hostUid && sessionShapeOk(false)) || guestJoinLeave() || guestCommand()
+      );
+      allow delete: if signedIn() && me() == hostUid;
+
+      // Chat relay: only people in the session read; only members of a live session write,
+      // under their own name; the host clears it when the session ends.
       match /messages/{msgId} {
-        allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.uid == request.auth.uid && (
-          request.auth.uid == hostUid ||
-          request.auth.uid in get(/databases/$(database)/documents/sessions/$(hostUid)).data.invited
-        );
-        allow delete: if signedIn() && request.auth.uid == hostUid;
+        function sess() { return get(/databases/$(database)/documents/sessions/$(hostUid)).data; }
+        allow read: if signedIn() && (me() == hostUid || me() in sess().members);
+        allow create: if signedIn()
+          && onlyKeys(request.resource.data, ['uid', 'name', 'text', 'at'])
+          && request.resource.data.uid == me()
+          && sess().active == true && me() in sess().members
+          && request.resource.data.name == sess().memberNames[me()]
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 300
+          && request.resource.data.at is int
+          && math.abs(request.resource.data.at - request.time.toMillis()) < 900000;
+        allow delete: if signedIn() && (me() == hostUid || me() == resource.data.uid);
       }
     }
 
-    // Temporary uploads for shared songs: each friend removes themselves after saving it;
-    // the last one (or the sender, after 14 days) deletes it.
+    // ── Temporary uploads for shared songs ─────────────────────────────────────
     match /transfers/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid;
+      allow read: if signedIn() && (me() == resource.data.fromUid || me() in resource.data.get('recipients', resource.data.pending));
+      allow create: if signedIn() && request.resource.data.fromUid == me()
+        && request.resource.data.pending.toSet().difference(friendsOf(me()).toSet()).size() == 0;
       allow update: if signedIn() && (
-        request.auth.uid == resource.data.fromUid ||
+        me() == resource.data.fromUid ||
         (
-          request.auth.uid in resource.data.pending &&
+          me() in resource.data.pending &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pending']) &&
-          resource.data.pending.toSet().difference(request.resource.data.pending.toSet()).hasOnly([request.auth.uid]) &&
+          resource.data.pending.toSet().difference(request.resource.data.pending.toSet()) == [me()].toSet() &&
           request.resource.data.pending.toSet().difference(resource.data.pending.toSet()).size() == 0
         )
       );
-      allow delete: if signedIn() && (request.auth.uid == resource.data.fromUid || resource.data.pending.size() == 0);
+      allow delete: if signedIn() && me() == resource.data.fromUid;
     }
 
-    // Group playlists: every member can read and edit; only the owner deletes.
+    // ── Group playlists: members read and edit; only the owner deletes ─────────
     match /collabPlaylists/{id} {
-      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid
-                    && request.auth.uid in request.resource.data.memberIds;
-      allow update: if signedIn() && request.auth.uid in resource.data.memberIds;
-      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow read: if signedIn() && me() in resource.data.memberIds;
+      allow create: if signedIn() && request.resource.data.ownerId == me()
+                    && me() in request.resource.data.memberIds;
+      allow update: if signedIn() && me() in resource.data.memberIds
+                    && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && resource.data.ownerId == me();
     }
 
-    // Shared playlists: readable by any signed-in user who has the link, written by the owner
+    // ── Shared playlists: anyone with the link (signed in) can read ────────────
     match /sharedPlaylists/{shareId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.ownerId == me();
+      allow update, delete: if signedIn() && resource.data.ownerId == me();
     }
   }
 }

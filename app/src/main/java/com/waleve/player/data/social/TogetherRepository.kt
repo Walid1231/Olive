@@ -66,6 +66,8 @@ class TogetherRepository @Inject constructor(
     private val prefs by lazy { context.getSharedPreferences("together", Context.MODE_PRIVATE) }
     private val users get() = firestore.collection("users")
     private val sessions get() = firestore.collection("sessions")
+    /** presence/{uid}: what I'm playing — only my friends can read it (Firestore rules). */
+    private val presence get() = firestore.collection("presence")
     private fun inbox(uid: String) = users.document(uid).collection("inbox")
     private val uid get() = auth.currentUser?.uid
 
@@ -97,6 +99,15 @@ class TogetherRepository @Inject constructor(
         if (started) return
         started = true
         _shareActivity.value = prefs.getBoolean("share_activity", true)
+        // Older versions kept this on the public profile — remove it from there once
+        scope.launch {
+            uidFlow().collect { u ->
+                if (u != null && !prefs.getBoolean("legacy_np_cleared_$u", false)) {
+                    runCatching { users.document(u).update("nowPlaying", FieldValue.delete()).await() }
+                        .onSuccess { prefs.edit().putBoolean("legacy_np_cleared_$u", true).apply() }
+                }
+            }
+        }
         scope.launch {
             combine(
                 uidFlow(),
@@ -110,12 +121,11 @@ class TogetherRepository @Inject constructor(
                     val (song, playing) = sp
                     runCatching {
                         if (song == null) {
-                            users.document(u).update("nowPlaying", FieldValue.delete()).await()
+                            presence.document(u).delete().await()
                         } else {
                             val t = resolver.quick(song)
-                            users.document(u).set(
+                            presence.document(u).set(
                                 mapOf("nowPlaying" to t.toMap() + mapOf("isPlaying" to playing, "updatedAt" to System.currentTimeMillis())),
-                                SetOptions.merge(),
                             ).await()
                         }
                     }
@@ -125,7 +135,7 @@ class TogetherRepository @Inject constructor(
 
     private fun clearPresence() {
         val u = uid ?: return
-        scope.launch { runCatching { users.document(u).update("nowPlaying", FieldValue.delete()).await() } }
+        scope.launch { runCatching { presence.document(u).delete().await() } }
     }
 
     private fun parseNowPlaying(doc: DocumentSnapshot): NowPlaying? {
@@ -149,7 +159,7 @@ class TogetherRepository @Inject constructor(
                 val ids = (snap?.get("friendIds") as? List<String>).orEmpty().toSet()
                 (listeners.keys - ids).forEach { gone -> listeners.remove(gone)?.remove(); current.remove(gone) }
                 (ids - listeners.keys).forEach { id ->
-                    listeners[id] = users.document(id).addSnapshotListener { d, _ ->
+                    listeners[id] = presence.document(id).addSnapshotListener { d, _ ->
                         val np = d?.let(::parseNowPlaying)
                         if (np == null) current.remove(id) else current[id] = np
                         trySend(current.toMap())
@@ -161,14 +171,18 @@ class TogetherRepository @Inject constructor(
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun myFriendIds(me: String): Set<String> =
+        (users.document(me).get().await().get("friendIds") as? List<String>).orEmpty().toSet()
+
     // ─── Sessions: parsing ───────────────────────────────────────────────────
     @Suppress("UNCHECKED_CAST")
     private fun parseSession(doc: DocumentSnapshot): ListenSession? {
         if (!doc.exists()) return null
         return ListenSession(
             hostUid = doc.getString("hostUid") ?: doc.id,
-            hostName = doc.getString("hostName") ?: "Friend",
-            hostAvatar = doc.getString("hostAvatar")?.takeIf { it.isNotBlank() },
+            hostName = doc.getString("hostName")?.take(60) ?: "Friend",
+            hostAvatar = RemoteTrack.safeHttps(doc.getString("hostAvatar")),
             active = doc.getBoolean("active") ?: false,
             invited = doc.get("invited") as? List<String> ?: emptyList(),
             members = doc.get("members") as? List<String> ?: emptyList(),
@@ -186,15 +200,23 @@ class TogetherRepository @Inject constructor(
     /** Active sessions I've been invited to (not my own). */
     fun observeInvites(): Flow<List<ListenSession>> = uidFlow().flatMapLatest { me ->
         if (me == null) flowOf(emptyList()) else callbackFlow {
-            // array-contains only (no composite index needed); "active" is checked here
+            // array-contains only (no composite index needed); "active" + friendship checked here
+            var friends = emptySet<String>()
+            var latest = emptyList<ListenSession>()
+            fun emit() = trySend(latest.filter { it.hostUid in friends })
+            val own = users.document(me).addSnapshotListener { snap, _ ->
+                @Suppress("UNCHECKED_CAST")
+                friends = (snap?.get("friendIds") as? List<String>).orEmpty().toSet()
+                emit()
+            }
             val l = sessions.whereArrayContains("invited", me)
                 .addSnapshotListener { snap, _ ->
-                    val list = snap?.documents?.mapNotNull(::parseSession)
+                    latest = snap?.documents?.mapNotNull(::parseSession)
                         ?.filter { it.active && it.hostUid != me && System.currentTimeMillis() - it.updatedAt < 2 * 3_600_000 }
                         .orEmpty()
-                    trySend(list)
+                    emit()
                 }
-            awaitClose { l.remove() }
+            awaitClose { l.remove(); own.remove() }
         }
     }
 
@@ -262,6 +284,7 @@ class TogetherRepository @Inject constructor(
         hostListener?.remove()
         val ref = sessions.document(me)
         var lastCommand: String? = null
+        var lastCommandAt = 0L
         hostListener = ref.addSnapshotListener { snap, _ ->
             val s = snap?.let(::parseSession)
             _hosting.value = s?.takeIf { it.active }
@@ -271,11 +294,22 @@ class TogetherRepository @Inject constructor(
             if (lastCommand == null) { lastCommand = id; return@addSnapshotListener }   // ignore an old one on start
             if (id == lastCommand || s?.openControl != true) return@addSnapshotListener
             lastCommand = id
-            val by = cmd["byName"] as? String ?: "A friend"
+            // Only real guests of this session, and not faster than ~2 per second
+            val byUid = cmd["by"] as? String ?: return@addSnapshotListener
+            val sess = s ?: return@addSnapshotListener
+            if (byUid == me || byUid !in sess.members) return@addSnapshotListener
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastCommandAt < 450) return@addSnapshotListener
+            lastCommandAt = nowMs
+            // The name comes from the session (what they joined with), not from the command
+            val by = sess.memberNames[byUid]?.take(40) ?: "A friend"
             when (cmd["type"]) {
                 "play" -> { player.remotePlay(); say("$by pressed play") }
                 "pause" -> { player.remotePause(); say("$by paused") }
-                "seek" -> (cmd["positionMs"] as? Number)?.toLong()?.let { player.remoteSeek(it) }
+                "seek" -> (cmd["positionMs"] as? Number)?.toLong()?.let { pos ->
+                    val dur = player.playerState.value.duration
+                    player.remoteSeek(if (dur > 0) pos.coerceIn(0L, dur) else pos.coerceAtLeast(0L))
+                }
                 "next" -> { player.remoteNext(); say("$by skipped") }
                 "prev" -> player.remotePrevious()
                 "track" -> RemoteTrack.fromMap(cmd["track"] as? Map<*, *>)?.let { t ->
@@ -308,7 +342,9 @@ class TogetherRepository @Inject constructor(
                     runCatching {
                         ref.update(mapOf("preparing" to !quick.playable, "track" to quick.toMap(), "updatedAt" to System.currentTimeMillis())).await()
                     }
-                    val track = if (quick.playable) quick else {
+                    val track = if (quick.playable) quick else if (song.source == "stream") {
+                        say("“${song.title}” can't be shared"); return@launch
+                    } else {
                         _hostUpload.value = 0f
                         val r = resolver.ensure(song) { _hostUpload.value = it }
                         _hostUpload.value = null
@@ -359,13 +395,14 @@ class TogetherRepository @Inject constructor(
         _hostUpload.value = null
         detachChat()
         runCatching { sessions.document(me).update(mapOf("active" to false, "updatedAt" to System.currentTimeMillis())).await() }
-        // Chats live on the phones — wipe this session's messages from the cloud
+        // Chats live on the phones — wipe this session's messages, then the session itself
         runCatching {
             val docs = sessions.document(me).collection("messages").get().await().documents
             docs.chunked(400).forEach { chunk ->
                 val b = firestore.batch(); chunk.forEach { b.delete(it.reference) }; b.commit().await()
             }
         }
+        runCatching { sessions.document(me).delete().await() }
     }
 
     // ─── Joining ─────────────────────────────────────────────────────────────
@@ -380,8 +417,9 @@ class TogetherRepository @Inject constructor(
         if (hostUid == me) error("That's your own session")
         if (_hosting.value != null) endSession()
         leaveSession(silent = true)
+        if (hostUid !in myFriendIds(me)) error("You can only join friends' sessions")
         val ref = sessions.document(hostUid)
-        val first = parseSession(ref.get().await())
+        val first = runCatching { parseSession(ref.get().await()) }.getOrNull()
         if (first == null || !first.active) error("This session has ended")
         if (me !in first.invited) error("You're not invited to this session")
         val myName = users.document(me).get().await().getString("displayName") ?: "Friend"
@@ -506,7 +544,10 @@ class TogetherRepository @Inject constructor(
         val me = uid ?: return
         runCatching {
             sessions.document(s.hostUid).update(
-                "command", cmd + mapOf("id" to java.util.UUID.randomUUID().toString(), "by" to me, "byName" to myGuestName, "at" to System.currentTimeMillis()),
+                "command", cmd + mapOf(
+                    "id" to java.util.UUID.randomUUID().toString(), "by" to me, "byName" to myGuestName,
+                    "at" to System.currentTimeMillis(), "sentAt" to FieldValue.serverTimestamp(),
+                ),
             ).await()
         }.onFailure { say("Couldn't reach ${s.hostName}") }
     }
@@ -557,8 +598,8 @@ class TogetherRepository @Inject constructor(
                 var fresh = 0
                 snap?.documents?.forEach { d ->
                     val m = com.waleve.player.domain.model.ChatMessage(
-                        d.id, d.getString("uid") ?: "", d.getString("name") ?: "Friend",
-                        d.getString("text") ?: "", d.getLong("at") ?: 0L,
+                        d.id, d.getString("uid") ?: "", d.getString("name")?.take(60) ?: "Friend",
+                        d.getString("text")?.take(300) ?: "", d.getLong("at") ?: 0L,
                     )
                     if (m.id !in known) { known[m.id] = m; if (m.uid != me) fresh++ }
                 }

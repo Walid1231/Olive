@@ -31,20 +31,43 @@ data class RemoteTrack(
     }
 
     companion object {
+        private val YT_ID = Regex("^[A-Za-z0-9_-]{11}$")
+
+        /** Only https links; nothing on this phone (file://, content://, /data/…) or other schemes. */
+        fun safeHttps(u: String?): String? {
+            val s = u?.trim() ?: return null
+            if (s.length > 2048 || !s.startsWith("https://", ignoreCase = true) || s.any { it.isWhitespace() }) return null
+            val host = runCatching { java.net.URI(s).host }.getOrNull() ?: return null
+            return s.takeIf { host.isNotBlank() }
+        }
+
+        /** Audio files friends send must come from Olive's own sharing storage (Supabase). */
+        fun safeFileUrl(u: String?): String? {
+            val s = safeHttps(u) ?: return null
+            val allowed = runCatching { java.net.URI(com.waleve.player.BuildConfig.SUPABASE_URL).host }.getOrNull()
+            val host = runCatching { java.net.URI(s).host }.getOrNull()
+            return s.takeIf { allowed != null && host.equals(allowed, ignoreCase = true) && "/storage/v1/object/public/" in s }
+        }
+
+        fun safeVideoId(v: String?): String? = v?.trim()?.takeIf { YT_ID.matches(it) }
+
+        /** Data from other people is never trusted: links and ids are checked, text is trimmed. */
         fun fromMap(m: Map<*, *>?): RemoteTrack? {
             if (m == null) return null
-            val title = m["title"] as? String ?: return null
+            val title = (m["title"] as? String)?.trim()?.take(200)?.takeIf { it.isNotEmpty() } ?: return null
+            val videoId = safeVideoId(m["videoId"] as? String)
+            val fileUrl = if (videoId == null) safeFileUrl(m["fileUrl"] as? String) else null
             return RemoteTrack(
-                key = m["key"] as? String ?: title,
+                key = (m["key"] as? String)?.take(300) ?: title,
                 title = title,
-                artist = m["artist"] as? String ?: "",
-                artUrl = (m["artUrl"] as? String)?.takeIf { it.isNotBlank() },
-                videoId = (m["videoId"] as? String)?.takeIf { it.isNotBlank() },
-                fileUrl = (m["fileUrl"] as? String)?.takeIf { it.isNotBlank() },
-                mediaType = m["mediaType"] as? String ?: "music",
-                durationMs = (m["durationMs"] as? Number)?.toLong() ?: 0L,
-                addedBy = m["addedBy"] as? String ?: "",
-                addedByName = m["addedByName"] as? String ?: "",
+                artist = (m["artist"] as? String)?.take(200) ?: "",
+                artUrl = safeHttps(m["artUrl"] as? String),
+                videoId = videoId,
+                fileUrl = fileUrl,
+                mediaType = if (m["mediaType"] == "audiobook") "audiobook" else "music",
+                durationMs = ((m["durationMs"] as? Number)?.toLong() ?: 0L).coerceIn(0L, 48L * 3_600_000),
+                addedBy = (m["addedBy"] as? String)?.take(128) ?: "",
+                addedByName = (m["addedByName"] as? String)?.take(60) ?: "",
                 addedAt = (m["addedAt"] as? Number)?.toLong() ?: 0L,
             )
         }

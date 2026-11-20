@@ -34,6 +34,7 @@ import javax.inject.Singleton
 class SupabaseStorage @Inject constructor(
     @ApplicationContext private val context: Context,
     baseClient: OkHttpClient,
+    private val auth: com.google.firebase.auth.FirebaseAuth,
 ) {
     private val client: OkHttpClient = baseClient.newBuilder()
         .apply { interceptors().clear() }      // never log / buffer big uploads
@@ -47,6 +48,57 @@ class SupabaseStorage @Inject constructor(
 
     data class Uploaded(val publicUrl: String, val objectPath: String, val size: Long)
 
+    // ── Server side (Supabase Edge Function "olive-api") ─────────────────────────
+    // Storage is no longer open to anonymous uploads / deletes: the function checks the
+    // Firebase login, then hands out a one-time upload link inside YOUR folder only.
+
+    private val jsonType = "application/json".toMediaTypeOrNull()
+
+    /** Call olive-api with the signed-in user's Firebase token. */
+    suspend fun callApi(body: org.json.JSONObject): org.json.JSONObject = withContext(Dispatchers.IO) {
+        val user = auth.currentUser ?: throw IllegalStateException("Please sign in first")
+        val token = kotlinx.coroutines.tasks.await(user.getIdToken(false)).token
+            ?: throw IllegalStateException("Please sign in again")
+        val base = BuildConfig.SUPABASE_URL.trimEnd('/')
+        val req = Request.Builder()
+            .url("$base/functions/v1/olive-api")
+            .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .header("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
+            .header("x-firebase-token", token)
+            .post(body.toString().toRequestBody(jsonType))
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            val json = runCatching { org.json.JSONObject(text) }.getOrDefault(org.json.JSONObject())
+            if (!resp.isSuccessful) throw IllegalStateException(json.optString("error").ifBlank { "Server error (${resp.code})" })
+            json
+        }
+    }
+
+    private suspend fun requestUpload(kind: String, fileName: String, size: Long, mime: String): Triple<String, String, String> {
+        val r = callApi(org.json.JSONObject().put("action", "upload").put("kind", kind)
+            .put("fileName", fileName).put("size", size).put("contentType", mime))
+        return Triple(r.getString("signedUrl"), r.getString("path"), r.getString("publicUrl"))
+    }
+
+    private fun putSigned(signedUrl: String, body: RequestBody): Int {
+        val req = Request.Builder().url(signedUrl).header("x-upsert", "false").put(body).build()
+        return client.newCall(req).execute().use { it.code }
+    }
+
+    /**
+     * Only real media files in shared storage can be uploaded — never Olive's private files
+     * (login, chats, settings…), even if someone tricks the app into asking.
+     */
+    fun isShareablePath(path: String): Boolean {
+        val canon = runCatching { File(path).canonicalPath }.getOrNull() ?: return false
+        if (!(canon.startsWith("/storage/") || canon.startsWith("/sdcard/") || canon.startsWith("/mnt/"))) return false
+        val privateDirs = listOfNotNull(context.externalCacheDir, context.getExternalFilesDir(null)?.parentFile)
+            .mapNotNull { runCatching { it.canonicalPath }.getOrNull() }
+        if (privateDirs.any { canon.startsWith(it) }) return false
+        return canon.substringAfterLast('.', "").lowercase() in MEDIA_EXT
+    }
+
     /**
      * Upload a local media file. [localPath] is the absolute path stored in the library.
      * @param onProgress 0..100
@@ -59,6 +111,7 @@ class SupabaseStorage @Inject constructor(
     ): Result<Uploaded> = withContext(Dispatchers.IO) {
         try {
             if (!isConfigured) return@withContext Result.failure(Exception("File sharing isn't set up (Supabase keys missing in this build)."))
+            if (!isShareablePath(localPath)) return@withContext Result.failure(Exception("Only songs and audiobooks in your music folders can be shared."))
             val size = fileSize(localPath)
             if (size <= 0) return@withContext Result.failure(Exception("Can't read this file."))
             if (size > MAX_UPLOAD_BYTES) {
@@ -69,9 +122,7 @@ class SupabaseStorage @Inject constructor(
 
             val name = File(localPath).name
             val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(120)
-            val objectPath = "shares/$ownerUid/${System.currentTimeMillis()}_$safeName"
-            val bucket = BuildConfig.SUPABASE_BUCKET
-            val base = BuildConfig.SUPABASE_URL.trimEnd('/')
+            val (signedUrl, objectPath, publicUrl) = requestUpload("share", safeName, size, mimeType)
 
             val body = object : RequestBody() {
                 override fun contentType(): MediaType? = mimeType.toMediaTypeOrNull()
@@ -93,27 +144,16 @@ class SupabaseStorage @Inject constructor(
                 }
             }
 
-            val request = Request.Builder()
-                .url("$base/storage/v1/object/$bucket/$objectPath")
-                .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
-                .header("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
-                .header("cache-control", "max-age=31536000")
-                .post(body)
-                .build()
-
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    val err = resp.body?.string()?.take(200) ?: ""
-                    val friendly = when (resp.code) {
-                        400, 413 -> if ("size" in err.lowercase()) "File too large for the sharing bucket." else "Upload rejected: $err"
-                        401, 403 -> "Upload not allowed — check the Supabase bucket policy (anon INSERT)."
-                        404 -> "Bucket '$bucket' not found in Supabase."
-                        else -> "Upload failed (${resp.code})."
-                    }
-                    return@withContext Result.failure(Exception(friendly))
+            val code = putSigned(signedUrl, body)
+            if (code !in 200..299) {
+                val friendly = when (code) {
+                    400, 413 -> "File too large or not an audio file."
+                    401, 403 -> "Upload link expired — try again."
+                    else -> "Upload failed ($code)."
                 }
+                return@withContext Result.failure(Exception(friendly))
             }
-            Result.success(Uploaded("$base/storage/v1/object/public/$bucket/$objectPath", objectPath, size))
+            Result.success(Uploaded(publicUrl, objectPath, size))
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "Upload failed"))
         }
@@ -127,15 +167,8 @@ class SupabaseStorage @Inject constructor(
             if (rest.isEmpty()) return@runCatching false
             val bucket = rest.substringBefore('/')
             val path = rest.substringAfter('/')
-            val base = BuildConfig.SUPABASE_URL.trimEnd('/')
-            val key = BuildConfig.SUPABASE_ANON_KEY
-            val req = Request.Builder()
-                .url("$base/storage/v1/object/$bucket/$path")
-                .header("apikey", key)
-                .header("Authorization", "Bearer $key")
-                .delete()
-                .build()
-            client.newCall(req).execute().use { it.isSuccessful || it.code == 404 }
+            val r = callApi(org.json.JSONObject().put("action", "delete").put("path", path).put("bucket", bucket))
+            r.optBoolean("ok", false)
         }.getOrDefault(false)
     }
 
@@ -158,20 +191,10 @@ class SupabaseStorage @Inject constructor(
                 scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray()
             }
 
-            val base = BuildConfig.SUPABASE_URL.trimEnd('/')
-            val objectPath = "avatars/$ownerUid/${System.currentTimeMillis()}.jpg"
-            val request = Request.Builder()
-                .url("$base/storage/v1/object/$AVATAR_BUCKET/$objectPath")
-                .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
-                .header("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
-                .post(jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()))
-                .build()
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    return@withContext Result.failure(Exception("Photo upload failed (${resp.code})."))
-                }
-            }
-            Result.success("$base/storage/v1/object/public/$AVATAR_BUCKET/$objectPath")
+            val (signedUrl, _, publicUrl) = requestUpload("avatar", "avatar.jpg", jpeg.size.toLong(), "image/jpeg")
+            val code = putSigned(signedUrl, jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()))
+            if (code !in 200..299) return@withContext Result.failure(Exception("Photo upload failed ($code)."))
+            Result.success(publicUrl)
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "Photo upload failed"))
         }
@@ -248,6 +271,7 @@ class SupabaseStorage @Inject constructor(
         /** Supabase free plan: 50 MB per file. */
         const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
         const val AVATAR_BUCKET = "olive-avatars"
+        val MEDIA_EXT = setOf("mp3", "m4a", "m4b", "aac", "opus", "ogg", "oga", "flac", "wav", "webm", "mp4", "mka", "wma", "amr", "3gp")
 
         fun mimeForPath(path: String): String = when (path.substringAfterLast('.', "").lowercase()) {
             "mp3" -> "audio/mpeg"
