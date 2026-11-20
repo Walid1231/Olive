@@ -8,7 +8,7 @@ import {
 
 const env = await initializeTestEnvironment({
   projectId: "demo-olive",
-  firestore: { rules: readFileSync("../firestore.rules", "utf8"), host: "127.0.0.1", port: 8080 },
+  firestore: { rules: readFileSync("firestore.rules", "utf8"), host: "127.0.0.1", port: 8080 },
 });
 
 let failed = 0, passed = 0;

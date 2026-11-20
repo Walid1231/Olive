@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import com.waleve.player.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -57,7 +58,7 @@ class SupabaseStorage @Inject constructor(
     /** Call olive-api with the signed-in user's Firebase token. */
     suspend fun callApi(body: org.json.JSONObject): org.json.JSONObject = withContext(Dispatchers.IO) {
         val user = auth.currentUser ?: throw IllegalStateException("Please sign in first")
-        val token = kotlinx.coroutines.tasks.await(user.getIdToken(false)).token
+        val token = user.getIdToken(false).await().token
             ?: throw IllegalStateException("Please sign in again")
         val base = BuildConfig.SUPABASE_URL.trimEnd('/')
         val req = Request.Builder()
