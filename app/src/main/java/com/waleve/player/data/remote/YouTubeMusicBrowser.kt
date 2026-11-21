@@ -305,6 +305,22 @@ class YouTubeMusicBrowser @Inject constructor(
         )
     }
 
+    // ─── Radio ("Up next" mix that YouTube builds from one song) ────────────
+
+    /** YouTube Music's own radio for [videoId]: songs people who like it also play. */
+    suspend fun radio(videoId: String): List<YtItem> {
+        val root = post("next", bodyWith(mapOf("videoId" to videoId, "playlistId" to "RDAMVM$videoId")))
+        return findAll(root, "playlistPanelVideoRenderer").mapNotNull { r ->
+            val vid = r["videoId"].str ?: return@mapNotNull null
+            val title = r["title"].text().ifBlank { return@mapNotNull null }
+            val by = r["longBylineText"].text().ifBlank { r["shortBylineText"].text() }
+            val dur = r["lengthText"].text().takeIf { it.isNotBlank() }
+            val parts = by.split(" • ").map { it.trim() }
+                .filter { it.isNotBlank() && !it.matches(Regex("\\d{4}")) && !it.contains(" views") && !it.contains(" likes") }
+            YtItem(YtType.SONG, title, parts.take(2).joinToString(" • "), thumbOf(r["thumbnail"]), videoId = vid, duration = dur, durationMs = parseDuration(dur))
+        }.distinctBy { it.videoId }.distinctBy { it.title.lowercase() + "|" + it.artist.lowercase() }
+    }
+
     // ─── Playlist / album / artist ──────────────────────────────────────────
 
     suspend fun collection(browseId: String): YtCollection {

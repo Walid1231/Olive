@@ -32,6 +32,17 @@ object AppModule {
     @Provides
     fun provideSongDao(database: AppDatabase): SongDao = database.songDao()
 
+    /** Listening history + "Not interested" list: a separate database, so it never touches the library. */
+    @Provides
+    @Singleton
+    fun provideListeningDatabase(@ApplicationContext context: Context): com.waleve.player.data.history.ListeningDatabase =
+        Room.databaseBuilder(context, com.waleve.player.data.history.ListeningDatabase::class.java, com.waleve.player.data.history.ListeningDatabase.NAME)
+            .fallbackToDestructiveMigration()
+            .build()
+
+    @Provides
+    fun provideListeningDao(db: com.waleve.player.data.history.ListeningDatabase): com.waleve.player.data.history.ListeningDao = db.dao()
+
     @Provides
     fun providePlaylistDao(database: AppDatabase): PlaylistDao = database.playlistDao()
 

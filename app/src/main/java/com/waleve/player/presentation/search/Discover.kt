@@ -34,6 +34,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.PersonOff
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.shadow
@@ -112,7 +116,13 @@ fun DiscoverContent(
     playingId: String? = null,
     downloads: Map<String, DownloadProgress> = emptyMap(),
     saved: Set<String> = emptySet(),
+    onNotInterested: (YtItem, com.waleve.player.data.history.NotInterested, String) -> Unit = { _, _, _ -> },
 ) {
+    // ⋮ tapped on an item: (item, the shelf it is in)
+    var menuFor by remember { mutableStateOf<Pair<YtItem, String>?>(null) }
+    menuFor?.let { (item, shelf) ->
+        NotInterestedSheet(item, shelf, onDismiss = { menuFor = null }) { what -> menuFor = null; onNotInterested(item, what, shelf) }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -155,8 +165,10 @@ fun DiscoverContent(
                 // Audiobooks banner on the main feed
                 val bookChip = chips.firstOrNull { it.params == YouTubeMusicBrowser.AUDIOBOOKS }
                 if (selectedChip == null && bookChip != null) item(key = "bookBanner") { AudiobookBanner { onChip(bookChip) } }
-                home?.sections.orEmpty().forEach { section ->
-                item(key = "sec_" + section.title) { Shelf(section, onPlay, onOpen, onDownload, loadingId, playingId, downloads, saved) }
+                home?.sections.orEmpty().forEachIndexed { i, section ->
+                    item(key = "sec_${i}_" + section.title) {
+                        Shelf(section, onPlay, onOpen, onDownload, loadingId, playingId, downloads, saved) { menuFor = it to section.title }
+                    }
                 }
             }
         }
@@ -235,6 +247,7 @@ private fun Shelf(
     section: YtSection, onPlay: (List<YtItem>, Int) -> Unit, onOpen: (YtItem) -> Unit, onDownload: (YtItem) -> Unit,
     loadingId: String?, playingId: String?,
     downloads: Map<String, DownloadProgress>, saved: Set<String>,
+    onMore: (YtItem) -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ShelfHeader(section)
@@ -252,7 +265,10 @@ private fun Shelf(
                 itemsIndexed(section.items, key = { i, it -> "${it.videoId}_$i" }) { i, item ->
                     SongRow(
                         item, Modifier.width(rowWidth), state = stateOf(item, loadingId, playingId),
-                        trailing = { DownloadButton(downloads[item.videoId], isSaved(item, saved), { onDownload(item) }) },
+                        trailing = {
+                            DownloadButton(downloads[item.videoId], isSaved(item, saved), { onDownload(item) })
+                            MoreButton { onMore(item) }
+                        },
                     ) { onPlay(section.items, i) }
                 }
             }
@@ -262,6 +278,7 @@ private fun Shelf(
                     CardItem(
                         item, onDownload = { onDownload(item) }, state = stateOf(item, loadingId, playingId),
                         progress = downloads[item.videoId], saved = isSaved(item, saved),
+                        onMore = { onMore(item) },
                     ) {
                         if (item.playable) onPlay(section.items.filter { it.playable }, section.items.filter { it.playable }.indexOf(item))
                         else onOpen(item)
@@ -312,6 +329,59 @@ fun DownloadButton(
     } else {
         Box(modifier.size(40.dp).clip(CircleShape).springClick(onClick = tap), contentAlignment = Alignment.Center) {
             DownloadGlyph(progress, saved, idle = GlassMuted, done = GlassAccent, size = 22.dp)
+        }
+    }
+}
+
+/** ⋮ next to a song row: opens the "Not interested" choices. */
+@Composable
+fun MoreButton(onClick: () -> Unit) {
+    Box(Modifier.size(width = 30.dp, height = 40.dp).clip(CircleShape).springClick(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(Icons.Rounded.MoreVert, "More", tint = GlassMuted, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** "Not interested" choices for one item: this one, everything by its artist / author, or the whole shelf. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun NotInterestedSheet(item: YtItem, shelf: String, onDismiss: () -> Unit, onPick: (com.waleve.player.data.history.NotInterested) -> Unit) {
+    val book = item.audiobook
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = com.waleve.player.presentation.theme.GlassPanel,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+            Text(item.title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (item.subtitle.isNotBlank()) Text(item.subtitle, color = GlassSub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(14.dp))
+            if (item.playable) SheetOption(
+                Icons.Rounded.Block, "Not interested",
+                if (book) "This audiobook won't be suggested again" else "This song won't be suggested again; less from this artist",
+            ) { onPick(com.waleve.player.data.history.NotInterested.ITEM) }
+            if (item.artist.isNotBlank()) SheetOption(
+                Icons.Rounded.PersonOff, "Don't recommend ${item.artist}",
+                if (book) "Nothing from this author / channel" else "Nothing from this artist",
+            ) { onPick(com.waleve.player.data.history.NotInterested.ARTIST) }
+            SheetOption(Icons.Rounded.VisibilityOff, "Hide “$shelf”", "This shelf won't show on For you") {
+                onPick(com.waleve.player.data.history.NotInterested.SHELF)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).springClick(onClick = onClick).padding(vertical = 12.dp, horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(38.dp).clip(CircleShape).background(GlassInk.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = GlassInk, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = GlassInk, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, color = GlassSub, fontSize = 12.sp)
         }
     }
 }
@@ -373,7 +443,7 @@ fun SongRow(item: YtItem, modifier: Modifier = Modifier, trailing: (@Composable 
 @Composable
 private fun CardItem(
     item: YtItem, onDownload: () -> Unit = {}, state: Int = 0,
-    progress: DownloadProgress? = null, saved: Boolean = false, onClick: () -> Unit,
+    progress: DownloadProgress? = null, saved: Boolean = false, onMore: (() -> Unit)? = null, onClick: () -> Unit,
 ) {
     val artist = item.type == YtType.ARTIST
     val wide = item.type == YtType.VIDEO
@@ -397,6 +467,11 @@ private fun CardItem(
                 }
             }
             if (item.playable) DownloadButton(progress, saved, onDownload, Modifier.align(Alignment.BottomStart).padding(8.dp), onCover = true)
+            if (onMore != null && (item.playable || item.type == YtType.ARTIST)) Box(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(30.dp).clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)).springClick(onClick = onMore),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Rounded.MoreVert, "More", tint = Color.White, modifier = Modifier.size(18.dp)) }
             if (item.audiobook) {
                 Row(
                     Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(10.dp))

@@ -98,6 +98,10 @@ fun SearchScreen(
                 is SearchUiEvent.Error           -> snackbarHostState.showSnackbar(event.message)
                 is SearchUiEvent.DownloadStarted -> snackbarHostState.showSnackbar("Download started: ${event.title}")
                 is SearchUiEvent.DownloadComplete -> snackbarHostState.showSnackbar("Downloaded: ${event.title}")
+                is SearchUiEvent.Blocked -> {
+                    val r = snackbarHostState.showSnackbar(event.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                    if (r == SnackbarResult.ActionPerformed) viewModel.undoNotInterested(event.key)
+                }
             }
         }
     }
@@ -289,6 +293,7 @@ fun SearchScreen(
                             onDownload = { dialogAsAudiobook = it.audiobook; showQualityDialogFor = it.toSearchResult() },
                             loadingId = loadingId, playingId = playingId,
                             downloads = activeDownloads, saved = savedIds,
+                            onNotInterested = viewModel::notInterested,
                         )
                     }
                 }

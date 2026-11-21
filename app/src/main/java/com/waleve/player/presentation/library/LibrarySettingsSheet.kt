@@ -1,6 +1,8 @@
 package com.waleve.player.presentation.library
 
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +63,30 @@ class LibrarySettingsViewModel @Inject constructor(
     private val prefs: LibraryPrefs,
     private val covers: CoverArtFetcher,
     private val library: LocalMusicRepository,
+    private val tracker: com.waleve.player.data.history.ListeningTracker,
+    private val forYou: com.waleve.player.data.history.ForYouEngine,
 ) : ViewModel() {
+    /** "Learn from what I play" is on unless history is paused. */
+    val historyPaused = tracker.paused
+    fun setLearn(on: Boolean) = tracker.setPaused(!on)
+
+    fun clearHistory() = viewModelScope.launch {
+        tracker.clearHistory()
+        forYou.clearAll()
+        flash("Listening history cleared")
+    }
+
+    fun resetNotInterested() = viewModelScope.launch {
+        forYou.clearBlocked()
+        flash("Not interested list cleared")
+    }
+
+    private suspend fun flash(msg: String) {
+        _working.value = msg
+        kotlinx.coroutines.delay(2500)
+        if (_working.value == msg) _working.value = null
+    }
+
     val hideJunk = prefs.hideJunk
     val autoCovers = prefs.autoCovers
     private val _working = MutableStateFlow<String?>(null)
@@ -128,6 +153,18 @@ fun LibrarySettingsSheet(onDismiss: () -> Unit, vm: LibrarySettingsViewModel = h
                 GlassButton("Find covers", { vm.findCovers() }, Modifier.weight(1f), icon = Icons.Rounded.Image, enabled = working == null && autoCovers, height = 46.dp)
             }
             working?.let { Text(it, color = GlassAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+
+            // ── For you ──
+            val historyPaused by vm.historyPaused.collectAsStateWithLifecycle()
+            SettingRow(
+                "Learn from what I play",
+                "For you suggests songs and audiobooks from what you listen to, finish or skip. Stays on this phone.",
+                !historyPaused, vm::setLearn,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassButton("Clear history", { vm.clearHistory() }, Modifier.weight(1f), icon = Icons.Rounded.History, height = 46.dp)
+                GlassButton("Reset hidden", { vm.resetNotInterested() }, Modifier.weight(1f), icon = Icons.Rounded.RestartAlt, height = 46.dp)
+            }
 
             // ── App ──
             val ctx = androidx.compose.ui.platform.LocalContext.current

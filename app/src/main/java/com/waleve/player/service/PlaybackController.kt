@@ -43,6 +43,7 @@ import javax.inject.Singleton
 class PlaybackController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val streamRepository: StreamRepository,
+    private val tracker: com.waleve.player.data.history.ListeningTracker,
 ) {
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
@@ -259,6 +260,10 @@ class PlaybackController @Inject constructor(
                 }
                 updateState()
                 if (mediaController?.isPlaying == true) saveBookmark()
+                // Listening history for the For you page
+                mediaController?.let { c ->
+                    tracker.tick(c.currentMediaItem?.mediaId?.let { songMap[it] }, c.isPlaying, c.currentPosition, c.duration)
+                }
                 delay(500)
             }
         }

@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -30,6 +33,8 @@ sealed class SearchUiEvent {
     data class Error(val message: String) : SearchUiEvent()
     data class DownloadStarted(val title: String) : SearchUiEvent()
     data class DownloadComplete(val title: String) : SearchUiEvent()
+    /** "Not interested" saved: show [message] with Undo (which removes [key]). */
+    data class Blocked(val message: String, val key: String) : SearchUiEvent()
 }
 
 typealias DownloadProgress = com.waleve.player.data.download.DownloadProgress
@@ -40,23 +45,62 @@ class SearchViewModel @Inject constructor(
     private val downloads: SongDownloads,
     @ApplicationContext private val context: Context,
     private val ytMusic: com.waleve.player.data.remote.YouTubeMusicBrowser,
+    private val forYou: com.waleve.player.data.history.ForYouEngine,
 ) : ViewModel() {
 
     // ── Discover (YouTube Music home shelves, shown before typing) ──
     private val _home = MutableStateFlow(ytMusic.cachedHome())
-    val home: StateFlow<com.waleve.player.data.remote.YtHome?> = _home.asStateFlow()
     private val _homeLoading = MutableStateFlow(false)
     val homeLoading: StateFlow<Boolean> = _homeLoading.asStateFlow()
     private val _homeError = MutableStateFlow(false)
     val homeError: StateFlow<Boolean> = _homeError.asStateFlow()
     private val _chip = MutableStateFlow<com.waleve.player.data.remote.YtChip?>(null)
     val chip: StateFlow<com.waleve.player.data.remote.YtChip?> = _chip.asStateFlow()
+
+    /**
+     * What Discover shows: your personal shelves on top (For you; book ones on Audiobooks),
+     * then YouTube's. Everything marked "Not interested" is filtered out.
+     */
+    val home: StateFlow<com.waleve.player.data.remote.YtHome?> =
+        combine(_home, forYou.sections, forYou.blocks, _chip) { h, personal, blocks, chip ->
+            val mine = when {
+                chip == null -> personal
+                chip.params == com.waleve.player.data.remote.YouTubeMusicBrowser.AUDIOBOOKS ->
+                    personal.filter { it.strapline.equals("AUDIOBOOKS", ignoreCase = true) }
+                else -> emptyList()
+            }
+            if (h == null && mine.isEmpty()) null
+            else {
+                val base = h ?: com.waleve.player.data.remote.YtHome()
+                val theirs = base.sections.filterNot { s -> mine.any { it.title == s.title } }
+                base.copy(sections = blocks.filter(mine + theirs))
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, _home.value)
+
+    /** Hide [item] / its artist / the [shelf] from recommendations. */
+    fun notInterested(item: com.waleve.player.data.remote.YtItem, what: com.waleve.player.data.history.NotInterested, shelf: String) {
+        viewModelScope.launch {
+            val key = forYou.block(item, what, shelf)
+            val msg = when (what) {
+                com.waleve.player.data.history.NotInterested.ITEM -> "You won't see “${item.title}” here again"
+                com.waleve.player.data.history.NotInterested.ARTIST -> "Won't recommend ${item.artist} anymore"
+                com.waleve.player.data.history.NotInterested.SHELF -> "Hid “$shelf”"
+            }
+            _events.emit(SearchUiEvent.Blocked(msg, key))
+        }
+    }
+
+    fun undoNotInterested(key: String) {
+        viewModelScope.launch { forYou.unblock(key) }
+    }
     /** Main home (no chip), so tapping "For you" again is instant. */
     private var mainHome: com.waleve.player.data.remote.YtHome? = _home.value
     private var homeJob: Job? = null
 
     /** Refresh shelves if they're missing or older than 30 minutes (or [force]). */
     fun loadHome(force: Boolean = false) {
+        // Personal shelves: rebuilt when old or after a few new listens
+        viewModelScope.launch { forYou.refresh() }
         val fresh = mainHome?.let { System.currentTimeMillis() - it.fetchedAt < 30 * 60_000 } ?: false
         if (!force && fresh && _chip.value == null) return
         homeJob?.cancel()
