@@ -214,7 +214,8 @@ class ForYouEngine @Inject constructor(
         if (mix.size >= 5) out += YtSection("Your mix", "Made from what you play", mix)
 
         // Because you listened to …
-        val because = becauseD?.await().orEmpty().filter(::wanted).filter { i -> mix.none { it.videoId == i.videoId } }.take(20)
+        val because = becauseD?.await().orEmpty().filter(::wanted)
+            .filter { i -> i.videoId != recent?.videoId && mix.none { it.videoId == i.videoId } }.take(20)
         if (recent != null && because.size >= 5) out += YtSection(recent.title, "Because you listened to", because)
 
         // Audiobooks like yours

@@ -1,6 +1,6 @@
-## Olive 1.5.14
+## Olive 1.5.15
 
-- Fixed updates failing with "App not installed": the file is checked before installing, and a damaged one is downloaded again
-- Clear message when there isn't enough storage to install an update
-- "Allow access" opens Settings when Android doesn't show its permission box
-- Google sign-in tries again on a weak connection and shows what went wrong
+- For you now learns from what you play, finish and skip
+- New shelves: Continue listening, Your mix, Because you listened to, Audiobooks for you, More from your top artists and authors
+- ⋮ on every song and audiobook: Not interested, Don't recommend this artist or author, or hide the whole shelf (with Undo)
+- Settings: turn listening history off, clear it, or reset hidden items
