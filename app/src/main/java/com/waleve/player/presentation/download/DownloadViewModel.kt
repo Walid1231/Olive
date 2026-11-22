@@ -44,6 +44,7 @@ class DownloadViewModel @Inject constructor(
     private val scanMusicUseCase: ScanMusicUseCase,
     private val songDao: SongDao,
     private val player: com.waleve.player.service.PlaybackController,
+    private val coverStore: com.waleve.player.data.cover.CoverStore,
 ) : ViewModel() {
 
     /** Last few downloads, shown on the empty page. */
@@ -161,15 +162,19 @@ class DownloadViewModel @Inject constructor(
                 )
                 lastMediaInfo = null
                 viewModelScope.launch {
+                    // Keep the cover as a file on the phone (shows offline), handed over once the scan finds the song
+                    val thumb = info?.thumbnailUrl ?: downloadResult.thumbnailUrl
+                    val cover = runCatching { coverStore.save(downloadResult.videoId, thumb) }.getOrNull() ?: thumb
+                    coverStore.remember(downloadResult.savedPath, cover, downloadResult.videoId)
                     scanMusicUseCase()
                     // Tag the newly-scanned song with its YouTube videoId and thumbnail
                     val byPath = downloadResult.savedPath?.let { songDao.getSongByPath(it) }
                     if (byPath != null) {
                         downloadResult.videoId?.let { songDao.updateVideoId(byPath.id, it) }
-                        (downloadResult.thumbnailUrl ?: info?.thumbnailUrl)?.let { songDao.updateAlbumArtUri(byPath.id, it) }
+                        cover?.let { songDao.updateAlbumArtUri(byPath.id, it) }
                     } else {
                         tagVideoId(downloadResult.videoId, info?.title)
-                        persistThumbnailUrl(info?.title, downloadResult.thumbnailUrl ?: info?.thumbnailUrl)
+                        persistThumbnailUrl(info?.title, cover)
                     }
                 }
             }.onFailure { error ->
@@ -247,12 +252,18 @@ class DownloadViewModel @Inject constructor(
                     _uiState.value = DownloadUiState.Done("Successfully downloaded all ${urls.size} items!")
                 }
                 viewModelScope.launch {
+                    // Covers as files first, so the scan can hand them over even if a file shows up late
+                    val covers = batchResults.associate { r ->
+                        val c = runCatching { coverStore.save(r.videoId, r.thumbnailUrl) }.getOrNull() ?: r.thumbnailUrl
+                        coverStore.remember(r.savedPath, c, r.videoId)
+                        r to c
+                    }
                     scanMusicUseCase()
                     // Tag each downloaded file with its videoId + thumbnail (matched by saved path)
                     batchResults.forEach { r ->
                         val song = r.savedPath?.let { songDao.getSongByPath(it) } ?: return@forEach
                         r.videoId?.let { songDao.updateVideoId(song.id, it) }
-                        r.thumbnailUrl?.let { songDao.updateAlbumArtUri(song.id, it) }
+                        covers[r]?.let { songDao.updateAlbumArtUri(song.id, it) }
                     }
                 }
             }

@@ -57,7 +57,9 @@ class SharedPlaylistRepositoryImpl @Inject constructor(
                     "videoId"      to videoId,
                     "title"        to song.title,
                     "artist"       to song.artist,
-                    "thumbnailUrl" to (song.albumArtUri ?: ""),
+                    // Friends can't open covers stored on this phone: send a web link
+                    "thumbnailUrl" to (song.albumArtUri?.takeIf { it.startsWith("http") }
+                        ?: videoId?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" } ?: ""),
                     "durationMs"   to song.duration,
                     "isLocalOnly"  to (videoId == null),   // only truly local if no videoId
                 )

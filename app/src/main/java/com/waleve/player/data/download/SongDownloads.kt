@@ -52,6 +52,7 @@ class SongDownloads @Inject constructor(
     private val extractor: MediaExtractor,
     private val scanMusic: ScanMusicUseCase,
     private val songDao: SongDao,
+    private val covers: com.waleve.player.data.cover.CoverStore,
 ) {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.w(TAG, "download job failed", e) }
@@ -134,19 +135,21 @@ class SongDownloads @Inject constructor(
 
     /** Scan the new file in, then tag it with its YouTube id and cover, so sharing and the tick work. */
     private suspend fun tagInLibrary(savedPath: String?, result: SearchResult) {
+        // Keep the cover as a file (works offline) and hand it over whenever the scan finds the song
+        val cover = runCatching { covers.save(result.videoId, result.thumbnailUrl) }.getOrNull() ?: result.thumbnailUrl
+        covers.remember(savedPath, cover, result.videoId)
         runCatching { scanMusic() }
         runCatching {
             val song = savedPath?.let { songDao.getSongByPath(it) }
             if (song != null) {
                 songDao.updateVideoId(song.id, result.videoId)
-                result.thumbnailUrl?.let { songDao.updateAlbumArtUri(song.id, it) }
+                cover?.let { songDao.updateAlbumArtUri(song.id, it) }
             } else {
                 // The file was renamed on the way: match the newest song with the same title
                 val clean = result.title.replace(Regex("[_\\-]"), " ").trim()
                 val matches = songDao.findRecentByTitle("%$clean%")
                 matches.firstOrNull { it.videoId == null }?.let { songDao.updateVideoId(it.id, result.videoId) }
-                val thumb = result.thumbnailUrl
-                if (!thumb.isNullOrEmpty()) matches.firstOrNull()?.let { songDao.updateAlbumArtUri(it.id, thumb) }
+                if (!cover.isNullOrEmpty()) matches.firstOrNull()?.let { songDao.updateAlbumArtUri(it.id, cover) }
             }
         }
     }

@@ -27,6 +27,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
     private val contentResolver: ContentResolver,
     private val libraryPrefs: com.waleve.player.data.cover.LibraryPrefs,
     private val coverArtFetcher: com.waleve.player.data.cover.CoverArtFetcher,
+    private val coverStore: com.waleve.player.data.cover.CoverStore,
 ) : LocalMusicRepository {
 
     override suspend fun scanMusic() = withContext(Dispatchers.IO) {
@@ -48,8 +49,11 @@ class LocalMusicRepositoryImpl @Inject constructor(
                 songDao.setMediaTypeForPaths(chunk, type)
             }
         }
+        // New downloads: give them their saved cover + YouTube id now that they're in the library
+        runCatching { coverStore.applyPending() }
         // Missing covers → look them up online in the background
         coverArtFetcher.runInBackground()
+        runCatching { coverStore.backfill() }
     }
 
     override fun getAudiobooks(): Flow<List<Song>> =
