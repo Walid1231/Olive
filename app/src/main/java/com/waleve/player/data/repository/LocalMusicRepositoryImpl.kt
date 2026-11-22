@@ -54,6 +54,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
         // Missing covers → look them up online in the background
         coverArtFetcher.runInBackground()
         runCatching { coverStore.backfill() }
+        Unit
     }
 
     override fun getAudiobooks(): Flow<List<Song>> =
