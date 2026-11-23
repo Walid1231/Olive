@@ -11,6 +11,7 @@ import com.waleve.player.domain.usecase.GetArtistsUseCase
 import com.waleve.player.domain.usecase.ToggleFavoriteUseCase
 import com.waleve.player.domain.repository.LocalMusicRepository
 import com.waleve.player.domain.repository.UserPreferencesRepository
+import com.waleve.player.domain.model.BookSortOption
 import com.waleve.player.domain.model.SortOption
 import com.waleve.player.domain.model.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -103,14 +104,34 @@ class LibraryViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val bookSortOption = userPreferencesRepository.bookSortOption.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BookSortOption.RECENT)
+    val bookSortOrder = userPreferencesRepository.bookSortOrder.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SortOrder.DESCENDING)
+
     /** Audiobooks are kept apart from songs: each book (album tag) is its own card. */
     val audiobookAlbums: StateFlow<List<Album>> = combine(
         localMusicRepository.getAudiobookAlbums(),
-        _searchQuery
-    ) { books, query ->
-        if (query.isBlank()) books else books.filter {
+        localMusicRepository.getAudiobooks(),
+        userPreferencesRepository.bookSortOption,
+        userPreferencesRepository.bookSortOrder,
+        _searchQuery,
+    ) { books, files, option, order, query ->
+        val filtered = if (query.isBlank()) books else books.filter {
             it.name.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true)
         }
+        // Chapter data (length, count, progress, when added) lives in the files, grouped per book.
+        val byBook = files.groupBy { it.album to it.artist }
+        fun chapters(b: Album) = byBook[b.name to b.artist].orEmpty()
+        val sorted = when (option) {
+            BookSortOption.RECENT   -> filtered.sortedBy { b -> chapters(b).maxOfOrNull { it.dateAdded } ?: 0L }
+            BookSortOption.TITLE    -> filtered.sortedBy { it.name.lowercase() }
+            BookSortOption.AUTHOR   -> filtered.sortedBy { it.artist.lowercase() }
+            BookSortOption.DURATION -> filtered.sortedBy { b -> chapters(b).sumOf { it.duration } }
+            BookSortOption.CHAPTERS -> filtered.sortedBy { b -> chapters(b).size }
+            BookSortOption.PROGRESS -> filtered.sortedBy { b ->
+                val ch = chapters(b); if (ch.isEmpty()) 0f else ch.count { it.playCount > 0 }.toFloat() / ch.size
+            }
+        }
+        if (order == SortOrder.DESCENDING) sorted.reversed() else sorted
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val audiobooks: StateFlow<List<Song>> = combine(
@@ -154,6 +175,14 @@ class LibraryViewModel @Inject constructor(
 
     fun setSortOrder(order: SortOrder) {
         viewModelScope.launch { userPreferencesRepository.setSortOrder(order) }
+    }
+
+    fun setBookSortOption(option: BookSortOption) {
+        viewModelScope.launch { userPreferencesRepository.setBookSortOption(option) }
+    }
+
+    fun setBookSortOrder(order: SortOrder) {
+        viewModelScope.launch { userPreferencesRepository.setBookSortOrder(order) }
     }
 
     fun deleteSong(songId: Long) {

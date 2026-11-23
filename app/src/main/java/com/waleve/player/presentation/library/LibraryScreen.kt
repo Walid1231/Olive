@@ -98,6 +98,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.waleve.player.domain.model.Song
+import com.waleve.player.domain.model.BookSortOption
 import com.waleve.player.domain.model.SortOption
 import com.waleve.player.domain.model.SortOrder
 import com.waleve.player.presentation.components.AlbumCard
@@ -126,6 +127,42 @@ private fun SortOption.icon() = when (this) {
     SortOption.DURATION   -> "⏱"
     SortOption.ARTIST     -> "🎤"
     SortOption.ALBUM      -> "💿"
+}
+
+// What the arrow means for each song sort (so Date doesn't say "A–Z")
+private fun SortOption.direction(order: SortOrder): String {
+    val asc = order == SortOrder.ASCENDING
+    return when (this) {
+        SortOption.DATE_ADDED -> if (asc) "↑ Oldest" else "↓ Newest"
+        SortOption.SIZE       -> if (asc) "↑ Smallest" else "↓ Largest"
+        SortOption.DURATION   -> if (asc) "↑ Shortest" else "↓ Longest"
+        else                  -> if (asc) "↑ A–Z" else "↓ Z–A"
+    }
+}
+
+// Names read best A→Z; date / size / length read best newest / biggest first
+private fun SortOption.defaultOrder() = when (this) {
+    SortOption.NAME, SortOption.ARTIST, SortOption.ALBUM -> SortOrder.ASCENDING
+    else -> SortOrder.DESCENDING
+}
+
+// Human-readable audiobook sort labels
+private fun BookSortOption.label() = when (this) {
+    BookSortOption.RECENT   -> "Recently added"
+    BookSortOption.TITLE    -> "Title (A–Z)"
+    BookSortOption.AUTHOR   -> "Author"
+    BookSortOption.DURATION -> "Length"
+    BookSortOption.CHAPTERS -> "Chapters"
+    BookSortOption.PROGRESS -> "Progress"
+}
+
+private fun BookSortOption.icon() = when (this) {
+    BookSortOption.RECENT   -> "🕐"
+    BookSortOption.TITLE    -> "🔤"
+    BookSortOption.AUTHOR   -> "✍️"
+    BookSortOption.DURATION -> "⏱"
+    BookSortOption.CHAPTERS -> "📖"
+    BookSortOption.PROGRESS -> "📊"
 }
 
 @Composable
@@ -382,7 +419,7 @@ private fun SongsTab(
                 )
                 Text(
                     text = "${currentSortOption.icon()} ${currentSortOption.label()} • " +
-                        if (currentSortOrder == SortOrder.ASCENDING) "↑ A–Z" else "↓ Z–A",
+                        currentSortOption.direction(currentSortOrder),
                     style = MaterialTheme.typography.labelSmall,
                     color = accentColor,
                     fontWeight = FontWeight.Medium,
@@ -452,7 +489,7 @@ private fun SongsTab(
                                         )
                                     } else {
                                         viewModel.setSortOption(option)
-                                        viewModel.setSortOrder(SortOrder.ASCENDING)
+                                        viewModel.setSortOrder(option.defaultOrder())
                                     }
                                     showSortMenu = false
                                 },
@@ -563,6 +600,8 @@ private fun AudiobooksTab(
     var bookToShare by remember { mutableStateOf<Song?>(null) }
     val deleteSongs = com.waleve.player.presentation.components.rememberSongDeleter()
     var filter by rememberSaveable { mutableStateOf(0) } // 0 all · 1 in progress · 2 not started · 3 finished
+    val bookSortOption by viewModel.bookSortOption.collectAsStateWithLifecycle()
+    val bookSortOrder by viewModel.bookSortOrder.collectAsStateWithLifecycle()
     bookToShare?.let { song ->
         val shareVm: SharePlaylistViewModel = hiltViewModel()
         val friends by shareVm.friends.collectAsStateWithLifecycle()
@@ -650,8 +689,20 @@ private fun AudiobooksTab(
             }
         }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("All", "In progress", "Not started", "Finished").forEachIndexed { i, l -> GlassChip(l, filter == i, { filter = i }) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("All", "In progress", "Not started", "Finished").forEachIndexed { i, l -> GlassChip(l, filter == i, { filter = i }) }
+                }
+                Spacer(Modifier.width(6.dp))
+                BookSortButton(
+                    option = bookSortOption,
+                    order = bookSortOrder,
+                    onOption = viewModel::setBookSortOption,
+                    onOrder = viewModel::setBookSortOrder,
+                )
             }
         }
         items(shown, key = { "book_${it.name}_${it.artist}" }) { book ->
@@ -698,6 +749,66 @@ private fun AudiobooksTab(
                 onToggleAudiobook = { viewModel.toggleAudiobook(song) },
                 isPlaying = song.id == currentPlayingSongId,
             )
+        }
+    }
+}
+
+// ── Audiobook sort button (same feel as the Songs sort menu) ──────────────────
+
+@Composable
+private fun BookSortButton(
+    option: BookSortOption,
+    order: SortOrder,
+    onOption: (BookSortOption) -> Unit,
+    onOrder: (SortOrder) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        // A compact pill showing the active sort + direction
+        Row(
+            Modifier.springClick { open = true }
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassAccent.copy(alpha = 0.12f))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Sort, "Sort audiobooks", tint = GlassAccent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(5.dp))
+            Text(
+                "${option.label()}  ${if (order == SortOrder.ASCENDING) "↑" else "↓"}",
+                color = GlassAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+            )
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            containerColor = com.waleve.player.presentation.theme.GlassMenu,
+        ) {
+            BookSortOption.entries.forEach { opt ->
+                val active = opt == option
+                DropdownMenuItem(
+                    leadingIcon = { Text(opt.icon(), style = MaterialTheme.typography.bodyMedium) },
+                    text = {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(opt.label(), color = if (active) GlassAccent else GlassInk, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                            if (active) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (order == SortOrder.ASCENDING) "↑" else "↓", color = GlassAccent, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    onClick = {
+                        if (active) {
+                            onOrder(if (order == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
+                        } else {
+                            onOption(opt)
+                            // Sensible default direction: newest/longest/most first, names A→Z
+                            onOrder(if (opt == BookSortOption.TITLE || opt == BookSortOption.AUTHOR) SortOrder.ASCENDING else SortOrder.DESCENDING)
+                        }
+                        open = false
+                    },
+                )
+            }
         }
     }
 }

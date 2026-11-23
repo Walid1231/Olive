@@ -1,5 +1,4 @@
-## Olive 1.5.16
+## Olive 1.5.17
 
-- Covers of songs and audiobooks you download are now saved on the phone, so they show offline too
-- Fixed new downloads sometimes ending up without a cover
-- Older downloads get their cover saved as well
+- Audiobooks can now be sorted — by recently added, title, author, length, chapters or progress
+- Sort direction (newest/oldest, A–Z/Z–A, longest/shortest) toggles with a tap
