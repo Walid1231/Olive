@@ -23,7 +23,14 @@ class HomeViewModel @Inject constructor(
     getMostPlayedUseCase: GetMostPlayedUseCase,
     localMusicRepository: com.waleve.player.domain.repository.LocalMusicRepository,
     authRepository: com.waleve.player.domain.repository.AuthRepository,
+    private val positions: com.waleve.player.data.history.ChapterPositions,
 ) : ViewModel() {
+
+    /** Changes whenever a listening position is saved → progress redraws. */
+    val positionsVersion: StateFlow<Int> = positions.version
+
+    /** Real book progress (how far into each chapter; finished chapters = 100%). */
+    fun bookProgress(chapters: List<com.waleve.player.domain.model.Song>): Float = positions.bookProgress(chapters)
 
     /** Signed-in profile for the greeting + avatar (null when signed out). */
     val profile: StateFlow<com.waleve.player.domain.model.UserProfile?> = authRepository.observeAuthState()

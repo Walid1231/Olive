@@ -46,6 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -213,22 +216,35 @@ fun HomeScreen(
                 val ch = now ?: last
                 val book = allAudiobooks.filter { it.album == ch.album && it.artist == ch.artist }
                 val idx = book.indexOfFirst { it.id == ch.id }.coerceAtLeast(0)
-                val frac = when {
-                    now != null && ps.duration > 0 && book.isNotEmpty() -> ((idx + ps.currentPosition.toFloat() / ps.duration) / book.size)
-                    book.isEmpty() -> 0f
-                    else -> book.count { it.playCount > 0 }.toFloat() / book.size
-                }
+                // Same real progress as the Library (saved positions; finished chapters = 100%)
+                val posVersion by viewModel.positionsVersion.collectAsStateWithLifecycle()
+                val frac = remember(book, posVersion) { viewModel.bookProgress(book) }
+                val left = (book.sumOf { it.duration } * (1f - frac)).toLong()
                 val playingHere = now != null && ps.isPlaying
+                // A soft wash of the book's own cover colour
+                val tint = com.waleve.player.presentation.components.rememberCoverColor(ch.albumArtUri, GlassAccent)
                 Row(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.72f).padding(14.dp),
+                    Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp), alpha = 0.72f)
+                        .background(Brush.horizontalGradient(listOf(tint.copy(alpha = 0.28f), tint.copy(alpha = 0.06f), Color.Transparent)))
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Artwork(ch.albumArtUri, Modifier.size(104.dp), corner = 18.dp, seed = ch.album.hashCode())
+                    Artwork(
+                        ch.albumArtUri,
+                        Modifier.size(104.dp).shadow(14.dp, RoundedCornerShape(18.dp), ambientColor = tint, spotColor = tint),
+                        corner = 18.dp, seed = ch.album.hashCode(),
+                    )
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Overline(if (playingHere) "Now listening" else "Continue listening")
-                        Text(ch.album.ifBlank { ch.title }, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Chapter ${idx + 1} of ${book.size.coerceAtLeast(1)}", color = GlassSub, fontSize = 12.5.sp, maxLines = 1)
+                        Text(ch.album.ifBlank { ch.title }, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 2, lineHeight = 21.sp, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            buildString {
+                                if (book.size > 1) append("Chapter ${idx + 1} of ${book.size}  ·  ")
+                                append(if (frac >= 0.985f) "Finished" else "${formatLeft(left)} left")
+                            },
+                            color = GlassSub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                         GlassProgress(frac.coerceIn(0f, 1f))
                         when {
                             ps.isLoading && now != null -> GradientButton("Loading…", {}, height = 34.dp, loading = true)
@@ -281,7 +297,7 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(Modifier.size(64.dp).clip(CircleShape).background(GlassGradientH), contentAlignment = Alignment.Center) {
-                        Text("♪", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Rounded.LibraryMusic, null, tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(if (songCount > 0) "Your music is ready" else "Let's find your music", color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
@@ -301,4 +317,10 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/** "2h 15m" / "40m" (at least 1m). */
+private fun formatLeft(ms: Long): String {
+    val m = (ms / 60_000).coerceAtLeast(1)
+    return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
 }
