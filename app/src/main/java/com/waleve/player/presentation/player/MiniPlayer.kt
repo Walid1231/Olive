@@ -23,6 +23,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +70,7 @@ fun MiniPlayer(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onClick: () -> Unit,
+    onPrevious: () -> Unit = {},
     isNightMode: Boolean = false,
     sleepTimerRemaining: Long = 0L,
     modifier: Modifier = Modifier,
@@ -77,13 +83,57 @@ fun MiniPlayer(
         playerState.currentPosition.toFloat() / playerState.duration.toFloat()
     else 0f
 
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Colour of the cover → soft glow inside the glass + progress line
+    val cover = com.waleve.player.presentation.components.rememberCoverColor(song.albumArtUri, GlassAccent)
+    val tint by animateColorAsState(cover, tween(600), label = "miniTint")
+
+    // Swipe the card: left = next, right = previous (it follows the finger, then springs back)
+    val dragX = remember { androidx.compose.animation.core.Animatable(0f) }
+    val threshold = with(density) { 84.dp.toPx() }
+
     // Light glass mini player (matches Figma "Light/Mini player")
     Box(
-        modifier = modifier.springClick(onClick = onClick)
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
+            .graphicsLayer {
+                translationX = dragX.value
+                alpha = 1f - (kotlin.math.abs(dragX.value) / (threshold * 3f)).coerceIn(0f, 0.45f)
+                rotationZ = dragX.value / threshold * 1.2f
+            }
+            .pointerInput(song.id) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        val x = dragX.value
+                        scope.launch {
+                            if (kotlin.math.abs(x) >= threshold) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                dragX.animateTo(if (x < 0) -threshold * 2.2f else threshold * 2.2f, tween(140))
+                                if (x < 0) onNext() else onPrevious()
+                                dragX.snapTo(if (x < 0) threshold * 1.2f else -threshold * 1.2f)
+                            }
+                            dragX.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f))
+                        }
+                    },
+                    onDragCancel = { scope.launch { dragX.animateTo(0f) } },
+                ) { change, amount ->
+                    change.consume()
+                    scope.launch { dragX.snapTo(dragX.value + amount) }
+                }
+            }
+            .springClick(onClick = onClick)
             .glass(RoundedCornerShape(22.dp), alpha = 0.82f)
-            ,
+            .drawBehind {
+                // Cover-coloured glow on the left, fading out to the right
+                drawRect(
+                    Brush.horizontalGradient(
+                        0f to tint.copy(alpha = 0.30f), 0.55f to tint.copy(alpha = 0.10f), 1f to Color.Transparent,
+                    )
+                )
+            },
     ) {
         Row(
             modifier = Modifier.padding(start = 9.dp, end = 12.dp, top = 9.dp, bottom = 9.dp),
@@ -123,7 +173,10 @@ fun MiniPlayer(
             }
             if (sleepSheet) SleepTimerSheet(onDismiss = { sleepSheet = false })
             Box(
-                modifier = Modifier.springClick(onClick = onPlayPause).size(40.dp).clip(CircleShape).background(GlassGradient),
+                modifier = Modifier.springClick {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onPlayPause()
+                }.size(40.dp).clip(CircleShape).background(GlassGradient),
                 contentAlignment = Alignment.Center,
             ) {
                 if (loading) {
@@ -139,7 +192,10 @@ fun MiniPlayer(
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onNext, modifier = Modifier.size(38.dp)) {
+            IconButton(onClick = {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                onNext()
+            }, modifier = Modifier.size(38.dp)) {
                 Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = GlassInk, modifier = Modifier.size(24.dp))
             }
         }
@@ -148,7 +204,10 @@ fun MiniPlayer(
             Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp).fillMaxWidth().height(3.dp)
                 .clip(RoundedCornerShape(2.dp)).background(GlassInk.copy(alpha = 0.06f))
         ) {
-            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(GlassGradientH))
+            Box(
+                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp)
+                    .background(Brush.horizontalGradient(listOf(tint, GlassAccent)))
+            )
         }
     }
 }

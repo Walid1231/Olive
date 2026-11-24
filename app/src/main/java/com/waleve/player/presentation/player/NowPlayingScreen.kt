@@ -87,6 +87,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -178,12 +181,38 @@ fun NowPlayingScreen(
         targetValue = GlassAccent,
         animationSpec = tween(1000), label = "accent",
     )
+    // Every song gets its own mood: the cover's main colour washes the screen (like Spotify)
+    val coverColor = com.waleve.player.presentation.components.rememberCoverColor(song?.albumArtUri, GlassAccent)
+    val tint by animateColorAsState(coverColor, tween(900), label = "coverTint")
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Transparent),
     ) {
+        // Soft, blurred copy of the cover behind everything (Android 12+ can blur)
+        if (android.os.Build.VERSION.SDK_INT >= 31 && !song?.albumArtUri.isNullOrEmpty()) {
+            androidx.compose.animation.Crossfade(song?.albumArtUri, androidx.compose.animation.core.tween(700), label = "bgCover") { art ->
+                AsyncImage(
+                    model = art, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                        .graphicsLayer { alpha = 0.30f }
+                        .blur(70.dp),
+                )
+            }
+        }
+        // Colour wash from the top, fading into the normal background
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to tint.copy(alpha = 0.62f),
+                    0.42f to tint.copy(alpha = 0.26f),
+                    0.80f to tint.copy(alpha = 0.06f),
+                    1f to Color.Transparent,
+                )
+            )
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -278,10 +307,50 @@ fun NowPlayingScreen(
                 // Large square album art — signature Spotify look
                 val appIconPainter = androidx.compose.ui.res.painterResource(R.mipmap.ic_launcher_foreground)
                 // The cover takes whatever height is left, so the controls below always fit
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                // Paused → the cover sinks back a little; playing → it comes forward (Apple Music feel)
+                val artScale by androidx.compose.animation.core.animateFloatAsState(
+                    if (playerState.isPlaying || playerState.isLoading) 1f else 0.88f,
+                    androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 260f), label = "artScale",
+                )
+                // Swipe the cover: left = next song, right = previous
+                val artDrag = remember { androidx.compose.animation.core.Animatable(0f) }
+                val artScope = androidx.compose.runtime.rememberCoroutineScope()
+                Box(
+                    Modifier.weight(1f).fillMaxWidth()
+                        .pointerInput(song?.id) {
+                            val limit = size.width * 0.22f
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    val x = artDrag.value
+                                    artScope.launch {
+                                        if (kotlin.math.abs(x) > limit) {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            artDrag.animateTo(if (x < 0) -size.width.toFloat() else size.width.toFloat(), tween(160))
+                                            if (x < 0) onNext() else onPrevious()
+                                            artDrag.snapTo(if (x < 0) size.width * 0.6f else -size.width * 0.6f)
+                                        }
+                                        artDrag.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.75f, stiffness = 300f))
+                                    }
+                                },
+                                onDragCancel = { artScope.launch { artDrag.animateTo(0f) } },
+                            ) { change, amount ->
+                                change.consume()
+                                artScope.launch { artDrag.snapTo(artDrag.value + amount) }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                 Box(
                     modifier = Modifier
                         .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                        .graphicsLayer {
+                            scaleX = artScale; scaleY = artScale
+                            translationX = artDrag.value
+                            rotationZ = artDrag.value / size.width * 6f
+                            alpha = 1f - (kotlin.math.abs(artDrag.value) / size.width).coerceIn(0f, 0.6f)
+                        }
+                        // Glow underneath in the cover's own colour
+                        .shadow(34.dp, RoundedCornerShape(30.dp), ambientColor = tint, spotColor = tint)
                         .glass(RoundedCornerShape(30.dp), alpha = 0.45f, elevation = 18.dp)
                         .padding(10.dp)
                         .clip(RoundedCornerShape(22.dp))
@@ -416,7 +485,7 @@ fun NowPlayingScreen(
                         .fillMaxWidth(fraction.coerceAtLeast(0.003f))
                         .height(4.dp)
                         .clip(CircleShape)
-                        .background(GlassGradientH)
+                        .background(Brush.horizontalGradient(listOf(tint, GlassAccent)))
                 )
                 // Small thumb dot
                 if (fraction > 0.005f) {
@@ -431,7 +500,7 @@ fun NowPlayingScreen(
                                 .size(14.dp)
                                 .clip(CircleShape)
                                 .background(Color.White)
-                                .border(3.dp, GlassAccent, CircleShape),
+                                .border(3.dp, tint, CircleShape),
                         )
                     }
                 }
