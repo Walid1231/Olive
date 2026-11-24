@@ -173,10 +173,7 @@ fun MiniPlayer(
             }
             if (sleepSheet) SleepTimerSheet(onDismiss = { sleepSheet = false })
             Box(
-                modifier = Modifier.springClick {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                    onPlayPause()
-                }.size(40.dp).clip(CircleShape).background(GlassGradient),
+                modifier = Modifier.springClick(onClick = onPlayPause).size(40.dp).clip(CircleShape).background(GlassGradient),
                 contentAlignment = Alignment.Center,
             ) {
                 if (loading) {

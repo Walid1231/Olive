@@ -590,7 +590,7 @@ fun YtCollectionScreen(
         }
         when {
             c == null && !error -> item {
-                Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = GlassAccent) }
+                com.waleve.player.presentation.components.SkeletonList(rows = 6)
             }
             c == null && error -> item {
                 Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), alpha = 0.6f).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {

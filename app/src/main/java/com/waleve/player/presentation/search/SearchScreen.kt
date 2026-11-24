@@ -214,14 +214,8 @@ fun SearchScreen(
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 when {
                     isSearching -> {
-                        // Loading
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = gc.accent, modifier = Modifier.size(40.dp), strokeWidth = 3.dp)
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Text("Searching…", style = MaterialTheme.typography.bodyMedium, color = gc.textMuted)
-                            }
-                        }
+                        // Loading: result-shaped placeholders shimmer where the results will appear
+                        com.waleve.player.presentation.components.SkeletonList(rows = 7, modifier = Modifier.padding(horizontal = 4.dp))
                     }
                     searchResults.isNotEmpty() -> {
                         // Results

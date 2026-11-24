@@ -94,6 +94,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -409,6 +411,11 @@ private fun SongsTab(
             )
             return@Column
         }
+        if (songs.isEmpty()) {
+            // Still loading → shimmering placeholders instead of a blank screen
+            com.waleve.player.presentation.components.SkeletonList(rows = 7, modifier = Modifier.padding(top = 4.dp))
+            return@Column
+        }
 
         // ── Song content: List or Grid ────────────────────
         if (isGridView) {
@@ -516,6 +523,7 @@ private fun AudiobooksTab(
     val posVersion by viewModel.positionsVersion.collectAsStateWithLifecycle()
     val playing = com.waleve.player.presentation.components.LocalPlaybackActive.current
     var showSort by remember { mutableStateOf(false) }
+    var showAllChapters by rememberSaveable { mutableStateOf(false) }
     val flipBookOrder = {
         viewModel.setBookSortOrder(if (bookSortOrder == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
     }
@@ -724,10 +732,28 @@ private fun AudiobooksTab(
                 },
             )
         }
+        // Every chapter of every book, folded away by default (the books above already open them)
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Text("All chapters", style = MaterialTheme.typography.titleSmall, color = textPrimary, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+            val turn by androidx.compose.animation.core.animateFloatAsState(if (showAllChapters) 180f else 0f, label = "chev")
+            Row(
+                Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .springClick(pressedScale = 0.98f) { showAllChapters = !showAllChapters }
+                    .glass(RoundedCornerShape(16.dp), alpha = 0.55f)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.List, null, tint = GlassAccent, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("All chapters", color = textPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("${files.size}", color = textMuted, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    Icons.Filled.KeyboardArrowDown, if (showAllChapters) "Hide chapters" else "Show chapters",
+                    tint = textMuted, modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn },
+                )
+            }
         }
-        items(files, key = { "abfile_${it.id}" }, span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { song ->
+        if (showAllChapters) items(files, key = { "abfile_${it.id}" }, span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { song ->
             SongListItem(
                 song = song,
                 onClick = { onSongClick(files, files.indexOf(song)) },

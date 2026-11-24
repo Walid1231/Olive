@@ -193,7 +193,11 @@ fun NowPlayingScreen(
     ) {
         // Soft, blurred copy of the cover behind everything (Android 12+ can blur)
         if (android.os.Build.VERSION.SDK_INT >= 31 && !song?.albumArtUri.isNullOrEmpty()) {
-            androidx.compose.animation.Crossfade(song?.albumArtUri, androidx.compose.animation.core.tween(700), label = "bgCover") { art ->
+            androidx.compose.animation.Crossfade(
+                targetState = song?.albumArtUri,
+                animationSpec = androidx.compose.animation.core.tween(700),
+                label = "bgCover",
+            ) { art: String? ->
                 AsyncImage(
                     model = art, contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
