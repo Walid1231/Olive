@@ -49,6 +49,10 @@ class LocalMusicRepositoryImpl @Inject constructor(
                 songDao.setMediaTypeForPaths(chunk, type)
             }
         }
+        // Rows saved before the "Olive" album fix still carry the folder name → give them their real name
+        scanned.filter { it.albumFixed }.forEach {
+            songDao.repairAlbum(it.entity.path, it.entity.album, it.entity.title)
+        }
         // New downloads: give them their saved cover + YouTube id now that they're in the library
         runCatching { coverStore.applyPending() }
         // Missing covers → look them up online in the background
@@ -69,7 +73,7 @@ class LocalMusicRepositoryImpl @Inject constructor(
             if (audiobook) SongEntity.MEDIA_AUDIOBOOK else SongEntity.MEDIA_MUSIC,
         )
 
-    private class Scanned(val entity: SongEntity)
+    private class Scanned(val entity: SongEntity, val albumFixed: Boolean = false)
 
     override fun getAllSongs(): Flow<List<Song>> =
         songDao.getAllSongs().map { list -> list.map { it.toDomain() } }
@@ -198,9 +202,15 @@ class LocalMusicRepositoryImpl @Inject constructor(
                 val duration = cursor.getLong(durationCol)
                 val flaggedSpoken = (audiobookCol >= 0 && cursor.getInt(audiobookCol) == 1) ||
                     (podcastCol >= 0 && cursor.getInt(podcastCol) == 1)
-                val title = cursor.getString(titleCol) ?: "Unknown"
+                // No title tag → Android uses the file name, which for our downloads ends in " [videoId]"
+                val title = (cursor.getString(titleCol) ?: "Unknown").replace(VIDEO_ID_SUFFIX, "").ifBlank { "Unknown" }
                 val artist = cursor.getString(artistCol) ?: "Unknown Artist"
-                val album = cursor.getString(albumCol) ?: "Unknown Album"
+                // No album tag → Android fills in the folder name ("Olive", "Download"…), which turned every
+                // downloaded story into a book called "Olive". Use the title, so each one is its own book.
+                val rawAlbum = cursor.getString(albumCol)
+                val albumFixed = rawAlbum.isNullOrBlank() || rawAlbum == "<unknown>" ||
+                    (rawAlbum == folder && rawAlbum.lowercase() in GENERIC_FOLDERS)
+                val album = if (albumFixed) title else rawAlbum!!
                 val mediaType = if (looksLikeAudiobook(path, duration, flaggedSpoken, "$title $artist $album"))
                     SongEntity.MEDIA_AUDIOBOOK else SongEntity.MEDIA_MUSIC
 
@@ -221,7 +231,8 @@ class LocalMusicRepositoryImpl @Inject constructor(
                         source = "local",
                         license = null,
                         mediaType = mediaType,
-                    )
+                    ),
+                    albumFixed = albumFixed,
                 ))
             }
         }
@@ -250,6 +261,14 @@ class LocalMusicRepositoryImpl @Inject constructor(
     }
 
     companion object {
+        /** " [dQw4w9WgXcQ]" at the end of a file name. */
+        private val VIDEO_ID_SUFFIX = Regex("""\s*\[[A-Za-z0-9_-]{11}]\s*$""")
+        /** Folders Android uses as a fake album name when a file has no album tag. */
+        private val GENERIC_FOLDERS = setOf(
+            "olive", "music", "download", "downloads", "audiobooks", "audiobook", "podcasts",
+            "recordings", "ringtones", "notifications", "audio", "media", "0", "sdcard", "documents",
+            "telegram", "telegram audio", "whatsapp audio", "snaptube", "vidmate", "ytmp3",
+        )
         private val SPOKEN_WORDS = listOf(
             "audiobook", "audio book", "audio story", "audio drama", "audio golpo",
             "golpo", "galpo", "goppo", "গল্প", "গপ্প", "কাহিনী", "kahini", "উপন্যাস", "upanyas",

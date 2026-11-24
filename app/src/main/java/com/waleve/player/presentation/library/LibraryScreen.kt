@@ -19,6 +19,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.rounded.AutoStories
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import com.waleve.player.presentation.components.Artwork
@@ -50,6 +55,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -110,61 +116,6 @@ import com.waleve.player.presentation.playlist.PlaylistViewModel
 import com.waleve.player.presentation.playlist.SharePlaylistViewModel
 import com.waleve.player.presentation.theme.LocalGhibliColors
 
-// Human-readable sort option labels
-private fun SortOption.label() = when (this) {
-    SortOption.DATE_ADDED -> "Date Added"
-    SortOption.NAME       -> "Name (A–Z)"
-    SortOption.SIZE       -> "File Size"
-    SortOption.DURATION   -> "Duration"
-    SortOption.ARTIST     -> "Artist"
-    SortOption.ALBUM      -> "Album"
-}
-
-private fun SortOption.icon() = when (this) {
-    SortOption.DATE_ADDED -> "🕐"
-    SortOption.NAME       -> "🔤"
-    SortOption.SIZE       -> "📦"
-    SortOption.DURATION   -> "⏱"
-    SortOption.ARTIST     -> "🎤"
-    SortOption.ALBUM      -> "💿"
-}
-
-// What the arrow means for each song sort (so Date doesn't say "A–Z")
-private fun SortOption.direction(order: SortOrder): String {
-    val asc = order == SortOrder.ASCENDING
-    return when (this) {
-        SortOption.DATE_ADDED -> if (asc) "↑ Oldest" else "↓ Newest"
-        SortOption.SIZE       -> if (asc) "↑ Smallest" else "↓ Largest"
-        SortOption.DURATION   -> if (asc) "↑ Shortest" else "↓ Longest"
-        else                  -> if (asc) "↑ A–Z" else "↓ Z–A"
-    }
-}
-
-// Names read best A→Z; date / size / length read best newest / biggest first
-private fun SortOption.defaultOrder() = when (this) {
-    SortOption.NAME, SortOption.ARTIST, SortOption.ALBUM -> SortOrder.ASCENDING
-    else -> SortOrder.DESCENDING
-}
-
-// Human-readable audiobook sort labels
-private fun BookSortOption.label() = when (this) {
-    BookSortOption.RECENT   -> "Recently added"
-    BookSortOption.TITLE    -> "Title (A–Z)"
-    BookSortOption.AUTHOR   -> "Author"
-    BookSortOption.DURATION -> "Length"
-    BookSortOption.CHAPTERS -> "Chapters"
-    BookSortOption.PROGRESS -> "Progress"
-}
-
-private fun BookSortOption.icon() = when (this) {
-    BookSortOption.RECENT   -> "🕐"
-    BookSortOption.TITLE    -> "🔤"
-    BookSortOption.AUTHOR   -> "✍️"
-    BookSortOption.DURATION -> "⏱"
-    BookSortOption.CHAPTERS -> "📖"
-    BookSortOption.PROGRESS -> "📊"
-}
-
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
@@ -178,6 +129,7 @@ fun LibraryScreen(
     isNightMode: Boolean,
     currentPlayingSongId: Long? = null,
     playlistViewModel: PlaylistViewModel? = null,
+    onPlayPause: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
@@ -300,7 +252,7 @@ fun LibraryScreen(
         ) { tabIndex ->
         when (tabIndex) {
             0 -> SongsTab(songs, onSongClick, viewModel, accentColor, textPrimary, textMuted, currentPlayingSongId, playlistViewModel)
-            1 -> AudiobooksTab(audiobookAlbums, audiobooks, onAlbumClick, onSongClick, viewModel, textPrimary, textMuted, currentPlayingSongId)
+            1 -> AudiobooksTab(audiobookAlbums, audiobooks, onAlbumClick, onSongClick, viewModel, textPrimary, textMuted, currentPlayingSongId, onPlayPause)
             2 -> AlbumsTab(albums, onAlbumClick)
             3 -> ArtistsTab(artists, onArtistClick)
             4 -> GenresTab(genres, onGenreClick, textPrimary)
@@ -402,109 +354,67 @@ private fun SongsTab(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ── Toolbar: count + sort + view toggle ──────────
+        // ── Toolbar: count · sort · view toggle ──────────
+        val songSort = SongSortChoices.choiceFor(currentSortOption.name)
+        val flipSongOrder = {
+            viewModel.setSortOrder(if (currentSortOrder == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
+        }
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 2.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Song count + active sort chip
-            Column {
-                Text(
-                    text = "${songs.size} songs",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textMuted,
-                )
-                Text(
-                    text = "${currentSortOption.icon()} ${currentSortOption.label()} • " +
-                        currentSortOption.direction(currentSortOrder),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = accentColor,
-                    fontWeight = FontWeight.Medium,
+            Text(
+                text = "${songs.size} song${if (songs.size == 1) "" else "s"}",
+                color = textMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            SortPill(
+                choice = songSort,
+                ascending = currentSortOrder == SortOrder.ASCENDING,
+                onOpen = { showSortMenu = true },
+                onFlip = flipSongOrder,
+            )
+            IconButton(onClick = { isGridView = !isGridView }) {
+                Icon(
+                    imageVector = if (isGridView) Icons.AutoMirrored.Filled.List else Icons.Filled.GridView,
+                    contentDescription = if (isGridView) "Switch to List" else "Switch to Grid",
+                    tint = accentColor,
+                    modifier = Modifier.size(22.dp),
                 )
             }
+        }
+        if (showSortMenu) {
+            SortSheet(
+                choices = SongSortChoices,
+                activeKey = currentSortOption.name,
+                ascending = currentSortOrder == SortOrder.ASCENDING,
+                onPick = { c ->
+                    viewModel.setSortOption(SortOption.valueOf(c.key))
+                    viewModel.setSortOrder(if (c.defaultAscending) SortOrder.ASCENDING else SortOrder.DESCENDING)
+                    showSortMenu = false
+                },
+                onFlip = flipSongOrder,
+                onDismiss = { showSortMenu = false },
+            )
+        }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // View toggle button
-                IconButton(onClick = { isGridView = !isGridView }) {
-                    Icon(
-                        imageVector = if (isGridView) Icons.AutoMirrored.Filled.List else Icons.Filled.GridView,
-                        contentDescription = if (isGridView) "Switch to List" else "Switch to Grid",
-                        tint = accentColor,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-
-                // Sort button
-                Box {
-                    IconButton(onClick = { showSortMenu = true }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Sort,
-                            contentDescription = "Sort",
-                            tint = accentColor,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false },
-                        modifier = Modifier.background(LocalGhibliColors.current.surfaceCard),
-                    ) {
-                        SortOption.entries.forEach { option ->
-                            val isActive = currentSortOption == option
-                            DropdownMenuItem(
-                                leadingIcon = {
-                                    Text(option.icon(), style = MaterialTheme.typography.bodyMedium)
-                                },
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = option.label(),
-                                            color = if (isActive) accentColor else textPrimary,
-                                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                                        )
-                                        if (isActive) {
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                text = if (currentSortOrder == SortOrder.ASCENDING) "↑" else "↓",
-                                                color = accentColor,
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    if (isActive) {
-                                        viewModel.setSortOrder(
-                                            if (currentSortOrder == SortOrder.ASCENDING)
-                                                SortOrder.DESCENDING
-                                            else
-                                                SortOrder.ASCENDING,
-                                        )
-                                    } else {
-                                        viewModel.setSortOption(option)
-                                        viewModel.setSortOrder(option.defaultOrder())
-                                    }
-                                    showSortMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+        // Nothing on the phone yet (wait a moment so it doesn't flash while the library loads)
+        var settled by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { kotlinx.coroutines.delay(700); settled = true }
+        if (songs.isEmpty() && settled) {
+            LibraryEmptyState(
+                icon = Icons.Rounded.LibraryMusic,
+                title = "No songs yet",
+                body = "Songs on your phone show up here. Download from Search, or share a link to Olive.",
+            )
+            return@Column
         }
 
         // ── Song content: List or Grid ────────────────────
         if (isGridView) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(start = 12.dp, top = 4.dp, end = 12.dp, bottom = 120.dp),
+                contentPadding = PaddingValues(start = 12.dp, top = 4.dp, end = 12.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -519,7 +429,7 @@ private fun SongsTab(
         } else {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 120.dp),
+                contentPadding = PaddingValues(bottom = 28.dp),
             ) {
                 items(songs, key = { it.id }) { song ->
                     SongListItem(
@@ -596,12 +506,19 @@ private fun AudiobooksTab(
     textPrimary: Color,
     textMuted: Color,
     currentPlayingSongId: Long?,
+    onPlayPause: () -> Unit,
 ) {
     var bookToShare by remember { mutableStateOf<Song?>(null) }
     val deleteSongs = com.waleve.player.presentation.components.rememberSongDeleter()
     var filter by rememberSaveable { mutableStateOf(0) } // 0 all · 1 in progress · 2 not started · 3 finished
     val bookSortOption by viewModel.bookSortOption.collectAsStateWithLifecycle()
     val bookSortOrder by viewModel.bookSortOrder.collectAsStateWithLifecycle()
+    val posVersion by viewModel.positionsVersion.collectAsStateWithLifecycle()
+    val playing = com.waleve.player.presentation.components.LocalPlaybackActive.current
+    var showSort by remember { mutableStateOf(false) }
+    val flipBookOrder = {
+        viewModel.setBookSortOrder(if (bookSortOrder == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
+    }
     bookToShare?.let { song ->
         val shareVm: SharePlaylistViewModel = hiltViewModel()
         val friends by shareVm.friends.collectAsStateWithLifecycle()
@@ -613,101 +530,158 @@ private fun AudiobooksTab(
             onDismiss = { bookToShare = null },
         )
     }
+    if (showSort) {
+        SortSheet(
+            choices = BookSortChoices,
+            activeKey = bookSortOption.name,
+            ascending = bookSortOrder == SortOrder.ASCENDING,
+            onPick = { c ->
+                viewModel.setBookSortOption(BookSortOption.valueOf(c.key))
+                viewModel.setBookSortOrder(if (c.defaultAscending) SortOrder.ASCENDING else SortOrder.DESCENDING)
+                showSort = false
+            },
+            onFlip = flipBookOrder,
+            onDismiss = { showSort = false },
+        )
+    }
     if (files.isEmpty()) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text("📚", style = MaterialTheme.typography.displaySmall)
-            Spacer(Modifier.height(12.dp))
-            Text("No audiobooks yet", style = MaterialTheme.typography.titleMedium, color = textPrimary, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Put files in an \"Audiobooks\" folder, download as Audiobook, or use ⋮ → Move to Audiobooks on any song.",
-                style = MaterialTheme.typography.bodySmall, color = textMuted,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-        }
+        LibraryEmptyState(
+            icon = Icons.Rounded.AutoStories,
+            title = "No audiobooks yet",
+            body = "Download a story as Audiobook, keep files in an \"Audiobooks\" folder, or use ⋮ → Move to Audiobooks on any song.",
+        )
         return
     }
-    // Per-book chapters + progress (chapters you've played / total)
+    // Per-book chapters + real progress (how far into each chapter you are, finished = 100%)
     val byBook = remember(files) { files.groupBy { it.album to it.artist } }
     fun chaptersOf(b: com.waleve.player.domain.model.Album) = byBook[b.name to b.artist].orEmpty()
-    fun progressOf(b: com.waleve.player.domain.model.Album): Float { val ch = chaptersOf(b); return if (ch.isEmpty()) 0f else ch.count { it.playCount > 0 }.toFloat() / ch.size }
+    val progressByBook = remember(books, byBook, posVersion) {
+        books.associate { (it.name to it.artist) to viewModel.bookProgress(chaptersOf(it)) }
+    }
+    fun progressOf(b: com.waleve.player.domain.model.Album): Float = progressByBook[b.name to b.artist] ?: 0f
     val resume = remember(files) { files.filter { it.lastPlayed != null }.maxByOrNull { it.lastPlayed ?: 0L } }
     val shown = books.filter { b ->
         val p = progressOf(b)
-        when (filter) { 1 -> p > 0f && p < 1f; 2 -> p == 0f; 3 -> p >= 1f; else -> true }
+        when (filter) { 1 -> p > 0.005f && p < 0.985f; 2 -> p <= 0.005f; 3 -> p >= 0.985f; else -> true }
     }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        resume?.let { ch ->
+        resume?.let { last ->
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                val book = files.filter { it.album == ch.album && it.artist == ch.artist }
+                val book = files.filter { it.album == last.album && it.artist == last.artist }
+                // The chapter playing right now wins over the one played last
+                val current = book.firstOrNull { it.id == currentPlayingSongId }
+                val ch = current ?: last
                 val idx = book.indexOfFirst { it.id == ch.id }.coerceAtLeast(0)
-                val done = if (book.isEmpty()) 0f else book.count { it.playCount > 0 }.toFloat() / book.size
-                // Hero "continue" card: the cover fills it, white text on a dark fade
+                val done = remember(book, posVersion) { viewModel.bookProgress(book) }
+                val isCurrent = current != null
+                val playingNow = isCurrent && playing
+                val info = remember(book, idx, done) {
+                    buildString {
+                        if (book.size > 1) append("Chapter ${idx + 1} of ${book.size}  ·  ")
+                        val left = (book.sumOf { it.duration } * (1f - done)).toLong()
+                        append(if (done >= 0.985f) "Finished" else "${formatHours(left.coerceAtLeast(60_000))} left")
+                    }
+                }
+                // Hero card: the cover fills it, white text on a dark fade. Tapping it while this book
+                // is the one loaded just plays / pauses it (it used to restart and always showed ▶).
                 Box(
-                    Modifier.springClick { onSongClick(book, idx) }
-                        .fillMaxWidth().height(132.dp)
+                    Modifier.springClick { if (isCurrent) onPlayPause() else onSongClick(book, idx) }
+                        .fillMaxWidth().heightIn(min = 132.dp)
                         .shadow(12.dp, RoundedCornerShape(26.dp), ambientColor = Color(0x3323305A), spotColor = Color(0x3323305A))
                         .clip(RoundedCornerShape(26.dp)),
                 ) {
-                    Artwork(ch.albumArtUri, Modifier.fillMaxSize(), corner = 0.dp, seed = ch.album.hashCode())
+                    Artwork(ch.albumArtUri, Modifier.matchParentSize(), corner = 0.dp, seed = ch.album.hashCode())
                     Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.78f), Color.Black.copy(alpha = 0.45f), Color.Black.copy(alpha = 0.15f)))
+                        Modifier.matchParentSize().background(
+                            Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.80f), Color.Black.copy(alpha = 0.50f), Color.Black.copy(alpha = 0.20f)))
                         )
                     )
-                    Row(Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Artwork(ch.albumArtUri, Modifier.size(84.dp).border(1.5.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(16.dp)), corner = 16.dp, seed = ch.album.hashCode())
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("CONTINUE LISTENING", color = Color.White.copy(alpha = 0.8f), fontWeight = FontWeight.ExtraBold, fontSize = 10.sp, letterSpacing = 1.2.sp)
-                            Spacer(Modifier.height(2.dp))
-                            Text(ch.album.ifBlank { ch.title }, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isCurrent) {
+                                    com.waleve.player.presentation.components.MiniEqualizer(
+                                        color = Color.White, modifier = Modifier.size(width = 14.dp, height = 11.dp), maxBarHeight = 11.dp,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    if (playingNow) "NOW PLAYING" else if (isCurrent) "PAUSED" else "CONTINUE LISTENING",
+                                    color = Color.White.copy(alpha = 0.85f), fontWeight = FontWeight.ExtraBold, fontSize = 10.sp,
+                                    letterSpacing = 1.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(ch.album.ifBlank { ch.title }, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 22.sp,
                                 style = androidx.compose.ui.text.TextStyle(fontFamily = com.waleve.player.presentation.theme.OutfitFamily, shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 6f)))
-                            Text("Chapter ${idx + 1} of ${book.size}  ·  ${ch.title}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(2.dp))
+                            Text(info, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(8.dp))
                             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.25f))) {
-                                Box(Modifier.fillMaxWidth(done.coerceIn(0.03f, 1f)).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                                Box(Modifier.fillMaxWidth(done.coerceIn(0.02f, 1f)).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
                             }
                         }
                         Spacer(Modifier.width(12.dp))
                         Box(
-                            Modifier.size(48.dp).shadow(10.dp, CircleShape, ambientColor = GlassAccent, spotColor = GlassAccent).clip(CircleShape).background(GlassGradient),
+                            Modifier.size(50.dp).shadow(10.dp, CircleShape, ambientColor = GlassAccent, spotColor = GlassAccent).clip(CircleShape).background(GlassGradient),
                             contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Filled.PlayArrow, "Resume", tint = Color.White, modifier = Modifier.size(26.dp)) }
+                        ) {
+                            Icon(
+                                if (playingNow) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                if (playingNow) "Pause" else "Resume",
+                                tint = Color.White, modifier = Modifier.size(28.dp),
+                            )
+                        }
                     }
                 }
             }
         }
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
-                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     listOf("All", "In progress", "Not started", "Finished").forEachIndexed { i, l -> GlassChip(l, filter == i, { filter = i }) }
                 }
-                Spacer(Modifier.width(6.dp))
-                BookSortButton(
-                    option = bookSortOption,
-                    order = bookSortOrder,
-                    onOption = viewModel::setBookSortOption,
-                    onOrder = viewModel::setBookSortOrder,
+                // Count on the left, sort on the right (like Spotify's "Recents" row)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${shown.size} book${if (shown.size == 1) "" else "s"}",
+                        color = textMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
+                    )
+                    SortPill(
+                        choice = BookSortChoices.choiceFor(bookSortOption.name),
+                        ascending = bookSortOrder == SortOrder.ASCENDING,
+                        onOpen = { showSort = true },
+                        onFlip = flipBookOrder,
+                    )
+                }
+            }
+        }
+        if (shown.isEmpty()) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Text(
+                    when (filter) { 1 -> "Nothing in progress"; 2 -> "You've started every book"; 3 -> "No finished books yet"; else -> "No books" },
+                    color = textMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 22.dp),
                 )
             }
         }
         items(shown, key = { "book_${it.name}_${it.artist}" }) { book ->
             val chapters = chaptersOf(book)
             val p = progressOf(book)
+            val isCurrentBook = currentPlayingSongId != null && chapters.any { it.id == currentPlayingSongId }
             var menu by remember { mutableStateOf(false) }
             PhotoCard(
                 model = book.artUri,
@@ -717,9 +691,24 @@ private fun AudiobooksTab(
                 seed = book.name.hashCode(),
                 onClick = { onBookClick(book.name, book.artist) },
                 modifier = Modifier.fillMaxWidth().aspectRatio(0.78f),
+                topStart = if (isCurrentBook) {
+                    {
+                        Row(
+                            Modifier.padding(10.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.55f))
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            com.waleve.player.presentation.components.MiniEqualizer(
+                                color = Color.White, modifier = Modifier.size(width = 13.dp, height = 10.dp), maxBarHeight = 10.dp,
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(if (playing) "Playing" else "Paused", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else null,
                 topEnd = {
                     Box(
-                        Modifier.springClick { menu = true }.padding(8.dp).size(32.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
+                        Modifier.springClick { menu = true }.padding(8.dp).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Filled.MoreVert, "Book options", tint = Color.White, modifier = Modifier.size(18.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = com.waleve.player.presentation.theme.GlassMenu) {
@@ -753,69 +742,29 @@ private fun AudiobooksTab(
     }
 }
 
-// ── Audiobook sort button (same feel as the Songs sort menu) ──────────────────
-
-@Composable
-private fun BookSortButton(
-    option: BookSortOption,
-    order: SortOrder,
-    onOption: (BookSortOption) -> Unit,
-    onOrder: (SortOrder) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        // A compact pill showing the active sort + direction
-        Row(
-            Modifier.springClick { open = true }
-                .clip(RoundedCornerShape(16.dp))
-                .background(GlassAccent.copy(alpha = 0.12f))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Sort, "Sort audiobooks", tint = GlassAccent, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(5.dp))
-            Text(
-                "${option.label()}  ${if (order == SortOrder.ASCENDING) "↑" else "↓"}",
-                color = GlassAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-            )
-        }
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            containerColor = com.waleve.player.presentation.theme.GlassMenu,
-        ) {
-            BookSortOption.entries.forEach { opt ->
-                val active = opt == option
-                DropdownMenuItem(
-                    leadingIcon = { Text(opt.icon(), style = MaterialTheme.typography.bodyMedium) },
-                    text = {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(opt.label(), color = if (active) GlassAccent else GlassInk, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
-                            if (active) {
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (order == SortOrder.ASCENDING) "↑" else "↓", color = GlassAccent, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    },
-                    onClick = {
-                        if (active) {
-                            onOrder(if (order == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
-                        } else {
-                            onOption(opt)
-                            // Sensible default direction: newest/longest/most first, names A→Z
-                            onOrder(if (opt == BookSortOption.TITLE || opt == BookSortOption.AUTHOR) SortOrder.ASCENDING else SortOrder.DESCENDING)
-                        }
-                        open = false
-                    },
-                )
-            }
-        }
-    }
-}
-
 private fun formatHours(ms: Long): String {
     val m = ms / 60_000
     return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
+}
+
+/** Friendly "nothing here yet" view with an icon instead of an emoji. */
+@Composable
+private fun LibraryEmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, body: String) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(Modifier.size(92.dp).clip(CircleShape).background(GlassAccent.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(62.dp).clip(CircleShape).background(GlassGradient), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(title, color = GlassInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(body, color = GlassMuted, fontSize = 13.sp, lineHeight = 19.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    }
 }
 
 // ── Albums Tab ────────────────────────────────────────────────────────────────
@@ -846,7 +795,7 @@ private fun ArtistsTab(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
-        contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 120.dp),
+        contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(artists, key = { it.name }) { artist ->
@@ -883,7 +832,7 @@ private fun GenresTab(
                         .background(gc.accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("🎵", style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Rounded.MusicNote, null, tint = gc.accent, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Text(
@@ -934,7 +883,7 @@ private fun FoldersTab(
                         .background(gc.accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("📁", style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Rounded.Folder, null, tint = gc.accent, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {

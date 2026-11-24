@@ -10,6 +10,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -102,6 +105,10 @@ fun WaLeveAppContent() {
             )
         }
 
+        // Lets any list show "playing" vs "paused" for the current song without passing it everywhere
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.waleve.player.presentation.components.LocalPlaybackActive provides playerState.isPlaying,
+        ) {
         Scaffold(
             containerColor = Color.Transparent,
             // Screens handle the status bar themselves; don't add it twice (that was the big empty gap on top)
@@ -116,6 +123,7 @@ fun WaLeveAppContent() {
                             playerState = playerState,
                             onPlayPause = playerViewModel::playPause,
                             onNext = playerViewModel::next,
+                            onPrevious = playerViewModel::previous,
                             onClick = { navController.navigate(NowPlayingRoute) },
                             isNightMode = isNightMode,
                             sleepTimerRemaining = sleepTimerRemaining,
@@ -152,9 +160,26 @@ fun WaLeveAppContent() {
                 playerViewModel = playerViewModel,
                 isNightMode = isNightMode,
                 onThemeToggle = themeViewModel::toggleTheme,
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                modifier = Modifier.fillMaxSize().padding(paddingValues)
+                    .then(if (showBottomBar) Modifier.fadeBottomEdge() else Modifier),
             )
+        }
         }
     }
     }
 }
+
+/** Content softly fades out just above the mini player instead of being cut off with a hard edge. */
+private fun Modifier.fadeBottomEdge(): Modifier = this
+    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = 28.dp.toPx()
+        drawRect(
+            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                0f to Color.Black, 1f to Color.Transparent,
+                startY = size.height - fade, endY = size.height,
+            ),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+        )
+    }

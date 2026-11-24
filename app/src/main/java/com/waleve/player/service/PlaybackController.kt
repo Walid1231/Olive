@@ -44,6 +44,7 @@ class PlaybackController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val streamRepository: StreamRepository,
     private val tracker: com.waleve.player.data.history.ListeningTracker,
+    private val positions: com.waleve.player.data.history.ChapterPositions,
 ) {
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
@@ -56,19 +57,15 @@ class PlaybackController @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var positionUpdateStarted = false
 
-    // ── Audiobook resume: remember where you stopped in every chapter ──
-    private val bookmarks = context.getSharedPreferences("audiobook_positions", Context.MODE_PRIVATE)
+    // ── Audiobook resume: remember where you stopped in every chapter (shared with the library) ──
     private var lastBookmarkSave = 0L
-
-    /** Online books have a new stream URL every time, so they're remembered by YouTube id. */
-    private fun bookmarkKey(song: Song): String = song.videoId?.let { "yt:$it" } ?: song.path
 
     private fun savedPosition(song: Song?): Long {
         if (song?.isAudiobook != true) return 0L
-        val pos = bookmarks.getLong(bookmarkKey(song), 0L)
+        val pos = positions.position(song)
         if (pos <= 0) return 0L
         // Smart resume: step back a little, more the longer you've been away
-        val savedAt = bookmarks.getLong("t:" + bookmarkKey(song), 0L)
+        val savedAt = positions.savedAt(song)
         val gap = if (savedAt > 0) System.currentTimeMillis() - savedAt else 0L
         return (pos - smartRewind(gap)).coerceAtLeast(0L)
     }
@@ -102,10 +99,8 @@ class PlaybackController @Inject constructor(
         lastBookmarkSave = now
         val pos = c.currentPosition
         val dur = c.duration
-        // Finished (last 30 s) → start from the beginning next time
-        val toSave = if (dur > 0 && pos > dur - 30_000) 0L else pos
-        val key = bookmarkKey(song)
-        bookmarks.edit().putLong(key, toSave).putLong("t:$key", now).apply()
+        // Finished (last 30 s) → start from the beginning next time, and count the chapter as done
+        positions.save(song, pos, finished = dur > 0 && pos > dur - 30_000)
     }
 
     // ── Sleep Timer ──────────────────────────────────────────

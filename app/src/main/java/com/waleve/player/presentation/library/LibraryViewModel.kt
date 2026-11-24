@@ -33,7 +33,14 @@ class LibraryViewModel @Inject constructor(
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val localMusicRepository: LocalMusicRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val positions: com.waleve.player.data.history.ChapterPositions,
 ) : ViewModel() {
+
+    /** Changes whenever a listening position is saved → progress bars redraw. */
+    val positionsVersion: StateFlow<Int> = positions.version
+
+    /** Real progress: how far into each chapter you are (finished chapters = 100%). */
+    fun bookProgress(chapters: List<Song>): Float = positions.bookProgress(chapters)
 
     private val _selectedTab = MutableStateFlow(0)
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
@@ -127,9 +134,7 @@ class LibraryViewModel @Inject constructor(
             BookSortOption.AUTHOR   -> filtered.sortedBy { it.artist.lowercase() }
             BookSortOption.DURATION -> filtered.sortedBy { b -> chapters(b).sumOf { it.duration } }
             BookSortOption.CHAPTERS -> filtered.sortedBy { b -> chapters(b).size }
-            BookSortOption.PROGRESS -> filtered.sortedBy { b ->
-                val ch = chapters(b); if (ch.isEmpty()) 0f else ch.count { it.playCount > 0 }.toFloat() / ch.size
-            }
+            BookSortOption.PROGRESS -> filtered.sortedBy { b -> positions.bookProgress(chapters(b)) }
         }
         if (order == SortOrder.DESCENDING) sorted.reversed() else sorted
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

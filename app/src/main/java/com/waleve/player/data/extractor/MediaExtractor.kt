@@ -663,6 +663,10 @@ class MediaExtractor @Inject constructor(
                     request.addOption("--parse-metadata", "%(playlist_title,title)s:%(album)s")
                     request.addOption("--parse-metadata", "%(uploader,channel)s:%(album_artist)s")
                     request.addOption("--embed-chapters")
+                } else if (category == DownloadCategory.SONG) {
+                    // YouTube Music tracks have an album; plain videos don't → use the title, else Android
+                    // shows the folder name ("Olive") as the album.
+                    request.addOption("--parse-metadata", "%(album,title)s:%(album)s")
                 }
 
                 // Cover art inside the file (MediaStore uses it as album art). WAV can't hold images.

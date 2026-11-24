@@ -117,6 +117,7 @@ fun NavGraph(
                 isNightMode = isNightMode,
                 currentPlayingSongId = currentPlayerState.currentSong?.id,
                 playlistViewModel = playlistVm,
+                onPlayPause = playerViewModel::playPause,
             )
         }
 

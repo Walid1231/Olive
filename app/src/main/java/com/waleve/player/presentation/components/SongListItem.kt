@@ -248,13 +248,22 @@ fun SongListItem(
 }
 
 /**
- * Mini animated equalizer bars that indicate a song is currently playing.
+ * Mini equalizer bars for the current song: they dance while it plays and rest while it's paused.
  */
 @Composable
-private fun MiniEqualizer(
+fun MiniEqualizer(
     color: Color,
     modifier: Modifier = Modifier,
+    maxBarHeight: androidx.compose.ui.unit.Dp = 16.dp,
 ) {
+    if (!LocalPlaybackActive.current) {
+        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+            listOf(0.35f, 0.7f, 0.5f).forEach { fraction ->
+                Box(Modifier.width(3.dp).height(maxBarHeight * fraction).clip(RoundedCornerShape(1.dp)).background(color))
+            }
+        }
+        return
+    }
     val transition = rememberInfiniteTransition(label = "equalizer")
     val bar1 by transition.animateFloat(
         initialValue = 0.3f, targetValue = 1f,
@@ -281,7 +290,7 @@ private fun MiniEqualizer(
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height(16.dp * fraction)
+                    .height(maxBarHeight * fraction)
                     .clip(RoundedCornerShape(1.dp))
                     .background(color),
             )

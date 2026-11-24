@@ -169,6 +169,10 @@ interface SongDao {
     @Query("UPDATE songs SET albumArtUri = :albumArtUri WHERE id = :songId")
     suspend fun updateAlbumArtUri(songId: Long, albumArtUri: String)
 
+    /** Replace a fake folder-name album ("Olive") with the real name; no-op when already right. */
+    @Query("UPDATE songs SET album = :album, title = :title WHERE path = :path AND (album != :album OR title != :title)")
+    suspend fun repairAlbum(path: String, album: String, title: String)
+
     /** Find a recently-added song by title for post-download tagging */
     @Query("SELECT * FROM songs WHERE title LIKE :titlePattern ORDER BY dateAdded DESC LIMIT 5")
     suspend fun findRecentByTitle(titlePattern: String): List<SongEntity>
