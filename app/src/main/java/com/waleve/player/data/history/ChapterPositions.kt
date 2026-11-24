@@ -32,9 +32,14 @@ class ChapterPositions @Inject constructor(@ApplicationContext context: Context)
     fun save(song: Song, positionMs: Long, finished: Boolean) {
         val k = key(song)
         prefs.edit()
-            .putLong(k, if (finished) 0L else positionMs)
+            // 0 means "finished" (older versions saved it that way), so a real stop is never stored as 0
+            .putLong(k, if (finished) 0L else positionMs.coerceAtLeast(1L))
             .putLong("t:$k", System.currentTimeMillis())
-            .apply { if (finished) putBoolean("done:$k", true) }
+            .apply {
+                if (finished) putBoolean("done:$k", true)
+                // Listening to a finished chapter again → it counts as in progress once you're a minute in
+                else if (positionMs > 60_000) remove("done:$k")
+            }
             .apply()
         _version.update { it + 1 }
     }
